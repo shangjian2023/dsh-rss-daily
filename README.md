@@ -87,3 +87,9 @@ The plugin itself uses exactly these stages: `fetch` produces the editor prompt,
 ## License
 
 MIT
+
+## Operations
+
+- **Catch-up.** If dsh is down at the scheduled time, the digest is sent on next boot as long as less than 12 h have passed; otherwise it waits for the next day.
+- **Manual control.** The `rss_daily` agent tool accepts `run` / `status` / `redo` / `deliver`.
+- **State.** Per-source health, MD5 dedup history, outbox and sent log live under `$DSH_HOME/rss-daily` (default `~/.dsh/rss-daily`); delete the directory to start fresh.
