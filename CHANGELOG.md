@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.3.3 - 2026-08-23
+
+- Replace the README screenshot with a true-scale desktop viewport capture (the previous one was taken from a half-width region at 2x, so it read as zoomed-in)
+
+
 ## 0.3.2 - 2026-08-23
 
 Mobile & robustness pass.
