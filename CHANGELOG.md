@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.2.2 - 2026-08-22
+
+- Fix the in-chat digest never appearing after startup on a blank conversation: the mount point now keeps looking for a populated conversation instead of giving up after 10 s, and re-mounts when the host node is detached by a conversation switch
+
 ## 0.2.1 - 2026-08-22
 
 Stability fixes.
