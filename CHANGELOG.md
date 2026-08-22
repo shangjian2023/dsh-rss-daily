@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.3.1 - 2026-08-23
+
+- Fix the digest disappearing right after midnight: the browser-side date vs server-reported "today" comparison could diverge across the day boundary and suppress the current digest; the digest now shows whenever it exists (its own date is in the title, and a newer digest replaces it automatically)
+
 ## 0.3.0 - 2026-08-22
 
 - The in-chat digest now renders as a genuine model reply: it mounts at the end of the host message column (inheriting exact width, indentation and message spacing), drops the card header/emoji/bold tags, and keeps only host-style muted action buttons
