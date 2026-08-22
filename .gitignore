@@ -1,0 +1,11 @@
+_orig/
+node_modules/
+__pycache__/
+*.pyc
+# 本地试跑状态(py/daily.py 默认落在脚本目录时)
+py/rss-*.json
+py/.rss.lock
+py/sources.json
+.DS_Store
+.test-state/
+pnpm-lock.yaml

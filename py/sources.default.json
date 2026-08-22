@@ -1,0 +1,326 @@
+{
+  "sources": [
+    {
+      "name": "阮一峰",
+      "url": "https://www.ruanyifeng.com/blog/atom.xml",
+      "category": "独立博客",
+      "method": "direct",
+      "tier": 2
+    },
+    {
+      "name": "少数派",
+      "url": "https://sspai.com/feed",
+      "category": "科技",
+      "method": "direct",
+      "tier": 2
+    },
+    {
+      "name": "极客公园",
+      "url": "https://www.geekpark.net/rss",
+      "category": "科技",
+      "method": "direct",
+      "tier": 2
+    },
+    {
+      "name": "InfoQ",
+      "url": "https://www.infoq.cn/feed",
+      "category": "技术",
+      "method": "direct",
+      "tier": 2
+    },
+    {
+      "name": "Solidot",
+      "url": "https://www.solidot.org/index.rss",
+      "category": "科技",
+      "method": "direct",
+      "tier": 2
+    },
+    {
+      "name": "钛媒体",
+      "url": "https://www.tmtpost.com/feed",
+      "category": "商业",
+      "method": "direct",
+      "tier": 2
+    },
+    {
+      "name": "美团技术",
+      "url": "https://tech.meituan.com/feed/",
+      "category": "技术",
+      "method": "direct",
+      "tier": 1
+    },
+    {
+      "name": "HackerNews",
+      "url": "https://hnrss.org/frontpage",
+      "category": "国际",
+      "method": "direct",
+      "tier": 2
+    },
+    {
+      "name": "TheVerge",
+      "url": "https://www.theverge.com/rss/index.xml",
+      "category": "国际",
+      "method": "direct",
+      "tier": 2
+    },
+    {
+      "name": "ArsTechnica",
+      "url": "https://feeds.arstechnica.com/arstechnica/index",
+      "category": "国际",
+      "method": "direct",
+      "tier": 2
+    },
+    {
+      "name": "量子位",
+      "url": "https://www.qbitai.com/feed",
+      "category": "AI",
+      "method": "direct",
+      "tier": 2
+    },
+    {
+      "name": "IT之家",
+      "url": "https://www.ithome.com/rss/",
+      "category": "科技",
+      "method": "direct",
+      "tier": 3
+    },
+    {
+      "name": "雷峰网",
+      "url": "https://www.leiphone.com/feed/",
+      "category": "科技",
+      "method": "direct",
+      "tier": 3
+    },
+    {
+      "name": "TheDecoder",
+      "url": "https://the-decoder.com/feed/",
+      "category": "AI",
+      "method": "direct",
+      "tier": 2
+    },
+    {
+      "name": "TechCrunch-AI",
+      "url": "https://techcrunch.com/category/artificial-intelligence/feed/",
+      "category": "AI",
+      "method": "direct",
+      "tier": 2
+    },
+    {
+      "name": "MIT科技评论",
+      "url": "https://www.technologyreview.com/topic/artificial-intelligence/feed",
+      "category": "AI",
+      "method": "direct",
+      "tier": 2
+    },
+    {
+      "name": "aihot",
+      "url": "https://aihot.virxact.com/rss",
+      "category": "AI",
+      "method": "direct",
+      "tier": 2
+    },
+    {
+      "name": "VentureBeat-AI",
+      "url": "https://venturebeat.com/category/ai/feed/",
+      "category": "AI",
+      "method": "direct",
+      "tier": 3
+    },
+    {
+      "name": "ScienceDaily-AI",
+      "url": "https://www.sciencedaily.com/rss/computers_math/artificial_intelligence.xml",
+      "category": "AI",
+      "method": "direct",
+      "tier": 3
+    },
+    {
+      "name": "爱范儿",
+      "url": "https://www.ifanr.com/feed",
+      "category": "科技",
+      "method": "direct",
+      "tier": 3
+    },
+    {
+      "name": "Engadget",
+      "url": "https://www.engadget.com/rss.xml",
+      "category": "国际",
+      "method": "direct",
+      "tier": 3
+    },
+    {
+      "name": "Wired",
+      "url": "https://www.wired.com/feed/rss",
+      "category": "国际",
+      "method": "direct",
+      "tier": 3
+    },
+    {
+      "name": "Nature",
+      "url": "https://www.nature.com/nature.rss",
+      "category": "科学",
+      "method": "direct",
+      "tier": 3
+    },
+    {
+      "name": "arXiv-csAI",
+      "url": "http://export.arxiv.org/rss/cs.AI",
+      "category": "研究",
+      "method": "direct",
+      "tier": 3
+    },
+    {
+      "name": "ProductHunt",
+      "url": "https://www.producthunt.com/feed",
+      "category": "产品",
+      "method": "direct",
+      "tier": 3
+    },
+    {
+      "name": "华尔街见闻",
+      "url": "https://dedicated.wallstreetcn.com/rss.xml",
+      "category": "财经",
+      "method": "direct",
+      "tier": 2
+    },
+    {
+      "name": "CNBC商业",
+      "url": "https://search.cnbc.com/rs/search/combinedcms/view.xml?partnerId=wrss01&id=10001147",
+      "category": "财经",
+      "method": "direct",
+      "tier": 2
+    },
+    {
+      "name": "NPR",
+      "url": "https://feeds.npr.org/1001/rss.xml",
+      "category": "国际",
+      "method": "direct",
+      "tier": 2
+    },
+    {
+      "name": "CBS",
+      "url": "https://www.cbsnews.com/latest/rss/main",
+      "category": "国际",
+      "method": "direct",
+      "tier": 3
+    },
+    {
+      "name": "TechCrunch",
+      "url": "https://techcrunch.com/feed/",
+      "category": "科技",
+      "method": "direct",
+      "tier": 2
+    },
+    {
+      "name": "CNET",
+      "url": "https://www.cnet.com/rss/news/",
+      "category": "科技",
+      "method": "direct",
+      "tier": 3
+    },
+    {
+      "name": "Quanta",
+      "url": "https://api.quantamagazine.org/feed/",
+      "category": "科学",
+      "method": "direct",
+      "tier": 1
+    },
+    {
+      "name": "PhysOrg",
+      "url": "https://phys.org/rss-feed/",
+      "category": "科学",
+      "method": "direct",
+      "tier": 2
+    },
+    {
+      "name": "Science期刊",
+      "url": "https://www.science.org/action/showFeed?jc=science&type=etoc&feed=rss",
+      "category": "科学",
+      "method": "direct",
+      "tier": 2
+    },
+    {
+      "name": "SciDaily-科学",
+      "url": "https://www.sciencedaily.com/rss/top/science.xml",
+      "category": "科学",
+      "method": "direct",
+      "tier": 2
+    },
+    {
+      "name": "SciDaily-健康",
+      "url": "https://www.sciencedaily.com/rss/top/health.xml",
+      "category": "健康",
+      "method": "direct",
+      "tier": 3
+    },
+    {
+      "name": "SciDaily-环境",
+      "url": "https://www.sciencedaily.com/rss/top/environment.xml",
+      "category": "环境",
+      "method": "direct",
+      "tier": 3
+    },
+    {
+      "name": "SciDaily-社会",
+      "url": "https://www.sciencedaily.com/rss/top/society.xml",
+      "category": "社会",
+      "method": "direct",
+      "tier": 3
+    },
+    {
+      "name": "Ars-科学",
+      "url": "https://feeds.arstechnica.com/arstechnica/science",
+      "category": "科学",
+      "method": "direct",
+      "tier": 2
+    },
+    {
+      "name": "Aeon",
+      "url": "https://aeon.co/feed.rss",
+      "category": "人文",
+      "method": "direct",
+      "tier": 2
+    },
+    {
+      "name": "Nautilus",
+      "url": "https://nautil.us/feed/",
+      "category": "人文",
+      "method": "direct",
+      "tier": 3
+    },
+    {
+      "name": "Smithsonian",
+      "url": "https://www.smithsonianmag.com/rss/latest_articles/",
+      "category": "人文",
+      "method": "direct",
+      "tier": 3
+    },
+    {
+      "name": "GitHub博客",
+      "url": "https://github.blog/feed/",
+      "category": "开发",
+      "method": "direct",
+      "tier": 2
+    },
+    {
+      "name": "Lobsters",
+      "url": "https://lobste.rs/rss",
+      "category": "开发",
+      "method": "direct",
+      "tier": 3
+    },
+    {
+      "name": "Phoronix",
+      "url": "https://www.phoronix.com/rss.php",
+      "category": "开发",
+      "method": "direct",
+      "tier": 3
+    },
+    {
+      "name": "LWN",
+      "url": "https://lwn.net/headlines/rss",
+      "category": "开发",
+      "method": "direct",
+      "tier": 3
+    }
+  ]
+}

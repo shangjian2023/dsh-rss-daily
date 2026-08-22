@@ -1,0 +1,15 @@
+# dsh-rss-daily bundle patch: one plugin row over the profile root.
+# Rows here are addressed by id from later layers, e.g. the user's own
+# cordis.patch.yml can retune config:
+#
+#   - replace:
+#       - id: rss-daily
+#         config:
+#           time: "07:30"
+#           targets:
+#             - type: serverchan
+#               key: SCTxxxxxxxx
+#
+- insert:
+    - id: rss-daily
+      name: dsh-rss-daily
