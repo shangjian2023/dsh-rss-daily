@@ -4,6 +4,11 @@
   "description": "dsh plugin: daily RSS news digest from 46 curated sources, LLM-edited via the model already configured in dsh, delivered to your IM via webhook (ServerChan / PushDeer / WeCom / Telegram / Bark / gotify / custom).",
   "type": "module",
   "main": "lib/index.js",
+  "exports": {
+    ".": "./lib/index.js",
+    "./client": "./lib/client.js",
+    "./package.json": "./package.json"
+  },
   "files": [
     "lib",
     "py",
@@ -14,6 +19,14 @@
   "dsh": {
     "bundle": {
       "patch": "./cordis.patch.yml"
+    },
+    "client": {
+      "inject": [
+        "@deepseek-ai/dsh-client-runtime",
+        "@deepseek-ai/dsh-client-ui-conversation",
+        "@deepseek-ai/dsh-client-ui-settings-plugins"
+      ],
+      "platform": "web"
     }
   },
   "scripts": {

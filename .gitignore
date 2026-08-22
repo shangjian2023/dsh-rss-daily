@@ -9,3 +9,4 @@ py/sources.json
 .DS_Store
 .test-state/
 pnpm-lock.yaml
+.local/

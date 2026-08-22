@@ -234,7 +234,7 @@ def record(health, name, ok, ms):
 def pick_sources(all_sources, health, state_file, per_day):
     by_cat = {}
     for s in all_sources:
-        if s.get("method") == "reader":
+        if s.get("method") == "reader" or s.get("disabled"):
             continue
         by_cat.setdefault(s["category"], []).append(s)
 
@@ -646,7 +646,7 @@ def emit(obj):
 
 def stage_fetch(p, args):
     sent = load_json(p.sent, {})
-    if sent.get("last_sent_date") == today_str():
+    if not args.force and sent.get("last_sent_date") == today_str():
         emit({"status": "SKIPPED_TODAY", "date": today_str()})
         return
 
@@ -668,6 +668,10 @@ def stage_fetch(p, args):
     save_json(p.health, health)
 
     pushed = load_json(p.pushed, {"hashes": [], "titles": []})
+    if args.force:
+        # redo:今日确认过的条目从去重表中剔除(保留历史),重新参与候选
+        dated = [x for x in pushed.get("dated", []) if x.get("d") != today_str()]
+        pushed = {"hashes": [x["h"] for x in dated], "titles": [x["t"] for x in dated], "dated": dated}
     seen_hashes = set(pushed.get("hashes", []))
     seen_tokens = [tokenize(t) for t in pushed.get("titles", [])[-PUSHED_KEEP_ITEMS:]]
 
@@ -911,6 +915,8 @@ def main():
     ap.add_argument("--digest-items", type=int, default=DIGEST_ITEMS)
     ap.add_argument("--per-day", type=int, default=SOURCES_PER_DAY,
                     help="每日抓取源数(测试用)")
+    ap.add_argument("--force", action="store_true",
+                    help="fetch:无视当日已送幂等门,重选重投(redo)")
     args = ap.parse_args()
 
     p = Paths(args)

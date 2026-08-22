@@ -60,7 +60,8 @@ dsh plugin --profile web add github:shangjian2023/dsh-rss-daily
 ## 使用
 
 - **自动**:每天 `time` 生成并推送;错过的话开机补跑。
-- **对话里**:直接吩咐 agent——它有 `rss_daily` 工具(`run` / `status` / `redo` / `deliver`),比如"现在生成今天的新闻日报"。
+- **网页面板**:每个会话头部有 **📰 按钮**——打开即见今日日报(tag 彩标 + 来源链接)、**源**标签页(查看全部 46 源、停用/启用、添加自己的源)、**设置**标签页(改自动播报时间、投递目标、每日条数——经 `rss-daily` settings 命名空间保存,定时器实时重排)。**获取今日日报 / 重新生成** 按钮即时跑管线,带阶段转圈动画(抓取中→模型编辑中→投递中);全部客户端渲染,**不进会话日志、不占上下文**。同一份设置表也出现在 设置 → 插件 → 插件配置。
+- **对话里**:直接吩咐 agent——它有 `rss_daily` 工具(`run` / `status` / `redo` / `deliver`),比如"现在生成今天的新闻日报"(这条路会占上下文;面板不会)。
 - **无界面/系统 cron**:管线可独立运行,LLM 走任意 OpenAI 兼容端点:
 
 ```sh
@@ -70,6 +71,10 @@ RSS_LLM_KEY=sk-... RSS_LLM_MODEL=deepseek-chat \
 python py/daily.py --state-dir ~/.rss-daily            # 带 LLM 编辑
 python py/daily.py --stage confirm --state-dir ~/.rss-daily   # 送达成功后确认
 ```
+
+## HTTP API(进阶)
+
+网页面板走的是同源 API `/rss-daily/api/*`(仅在带 webserver 的 profile 注册):`GET status`、`POST run`、`POST redo`、`GET/PUT sources`、`POST config`。投递目标里的密钥在响应中打码;写回时带打码值的字段保留原值。所有写入先过字段白名单校验再落盘。
 
 ## 管线阶段(进阶)
 

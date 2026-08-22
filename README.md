@@ -60,7 +60,8 @@ Source entry shape (`sources.json`): `{ "name", "url", "category", "tier" (1–3
 ## Use
 
 - **Automatic**: every day at `time`, the digest is generated and pushed. Missed runs are caught up on boot.
-- **In chat**: ask the agent — it has an `rss_daily` tool (`run` / `status` / `redo` / `deliver`), e.g. *"generate today's news digest now"*.
+- **Web panel**: every session header gets a **📰 button** — open it for today's digest (tag-colored items, source links), the **sources** tab (view all 46, enable/disable, add your own), and the **settings** tab (change the schedule time, delivery targets, digest size — saved through the plugin's `rss-daily` settings namespace, timer re-arms live). A **获取今日日报 / 重新生成** button runs the pipeline on demand with a live phase spinner (fetching → LLM editing → delivering); everything renders client-side and never enters the session log. The same settings form also appears under Settings → Plugins → Plugin configuration.
+- **In chat**: ask the agent — it has an `rss_daily` tool (`run` / `status` / `redo` / `deliver`), e.g. *"generate today's news digest now"* (this path uses context; the panel does not).
 - **Headless / system cron**: run the pipeline directly with any OpenAI-compatible endpoint:
 
 ```sh
@@ -70,6 +71,10 @@ RSS_LLM_KEY=sk-... RSS_LLM_MODEL=deepseek-chat \
 python py/daily.py --state-dir ~/.rss-daily            # with LLM editing
 python py/daily.py --stage confirm --state-dir ~/.rss-daily   # after delivery succeeded
 ```
+
+## HTTP API (advanced)
+
+The web panel talks to a same-origin API at `/rss-daily/api/*` (registered only in profiles with a webserver): `GET status`, `POST run`, `POST redo`, `GET/PUT sources`, `POST config`. Secrets in delivery targets are masked in responses; a write containing the mask keeps the stored value. All writes are field-validated before they touch settings or disk.
 
 ## Pipeline stages (advanced)
 
