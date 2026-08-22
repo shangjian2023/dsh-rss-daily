@@ -1,94 +1,98 @@
-# dsh-rss-daily
+# 📰 dsh-rss-daily
 
-[dsh](https://github.com/deepseek-ai/deepseek-harness) 插件:每天早上把一份**精选要闻日报**推到你的 IM——46 个精选 RSS 源,覆盖科技/科学/国际/财经/人文/开发。
+> **一句话：每天早上 8 点，dsh 自动给你端上一份主编级的要闻日报** —— 用你已经配好的模型编辑、送到你的微信 / Telegram，还会像一条普通回复一样出现在对话里（不占任何上下文）。
 
-它和普通 RSS 阅读器的区别:
+[![npm](https://img.shields.io/npm/v/dsh-rss-daily)](https://www.npmjs.com/package/dsh-rss-daily)
+[![License: MIT](https://img.shields.io/badge/license-MIT-green)](LICENSE)
 
-- **主编,不是聚合器。** 候选池(~20 条)先打分(源 tier × 时效 × 信号词)、去重(Jaccard + MD5 历史)、再经多源事件图谱交叉验证(newsflash,≥3 家独立媒体佐证),最后交给 **dsh 里已配置的模型**做编辑:合并同事件、剔除 PR 通稿和周刊盘点、选题平衡(同 tag ≤2 条)、每条写一句 ≤45 字的具体事实(英文新闻中文表述)。
-- **零额外 LLM 凭据。** 编辑这一步走 `ctx.llm`,用你 dsh 现成的模型;模型调用失败自动降级规则模式,日报永不断供。
-- **送到你读的地方。** webhook 推送:Server酱 / PushDeer / 企业微信机器人 / Telegram / Bark / gotify / 自定义 JSON 端点。
-- **生产级管线。** 移植自一条 2026 年 6 月起每天在生产环境运行、迭代过 9 版的私人管线:源健康度自适应超时、feed 编码乱码修复、短摘要抓原文补全、420s 硬预算、幂等两阶段送达(fetch → outbox → 投递 → confirm)、14 天去重窗口。
+[English README](README.md)
 
-## 依赖
+## 长什么样
 
-- dsh,使用 `web`(或任意常驻)profile
-- Python 3.9+ 且装了 `feedparser`:`pip install feedparser`
-- Node.js ≥ 18(dsh 自带)
+日报**直接出现在你的对话里，样式和模型回答一模一样** —— 纯 markdown 排版、同样的字体和宽度：
 
-## 安装
+![对话内日报](docs/in-chat.png)
 
-一条命令——`dsh plugin add` 会用 pnpm 装包并自动追加进 profile 的 `dsh.profile.bundles`,插件行由本包自带的 `cordis.patch.yml` 提供:
+它是纯前端渲染：**只显示，不写会话记录、不发给模型**，你的上下文干干净净。
+
+## 为什么值得装
+
+- **像主编选的，不是聚合器堆的。** ~20 条候选先打分（源等级 × 时效 × 信号词）、去重（Jaccard + 14 天 MD5 历史）、多源事件图谱交叉验证，最后交给 **dsh 里你已配好的模型**做主编：合并同事件、剔除 PR 通稿、平衡选题（同话题 ≤2 条）、每条浓缩成一句 ≤45 字的具体事实。
+- **零额外 API key。** 编辑这步走 `ctx.llm`，用 dsh 现成的模型，不多花一分钱、不多配一个密钥。
+- **永不断更。** 模型调用失败自动降级规则模式照常出稿；错过定时段落，开机 12 小时内自动补跑。
+- **送到你读的地方。** Server酱 / PushDeer / 企业微信 / Telegram / Bark / gotify / 自定义 webhook，任一成功即算送达。
+- **生产级管线。** 移植自 2026 年 6 月起每天在生产环境运行、迭代过 9 版的私人脚本：源健康度自适应超时、feed 乱码修复、短摘要抓原文补全、420 秒硬预算、幂等两阶段送达（fetch → outbox → 投递 → confirm）。
+
+## 安装（npm 推荐）
 
 ```sh
+# npm（推荐，无 git 克隆、无构建脚本）
+dsh plugin --profile web add dsh-rss-daily
+
+# 或 GitHub
 dsh plugin --profile web add github:shangjian2023/dsh-rss-daily
 ```
 
-重启 `dsh web`,定时任务即生效。本地开发:`dsh plugin --profile web add /绝对路径/dsh-rss-daily`(pnpm 以 link 方式挂载;先在仓库里跑一次 `pnpm install`)。
+重启 `dsh web`：每个会话头部出现 **📰** 按钮，定时任务即刻生效。
+
+**30 秒配好：**
+
+1. 点任意会话头部的 **📰** 按钮 → **设置** 标签
+2. 改时间、加一个投递目标（Server酱 / PushDeer / 企微 / Telegram / Bark / gotify / 自定义）
+3. 点 **获取今日日报** —— 立刻生成、立刻投递、立刻出现在对话里
+
+不用碰任何 YAML —— 时间、目标、源、条数、模型，全部在面板里改，即时生效。
+
+## 亮点
+
+- 🖥 **三个界面，零上下文消耗**：对话内插播、📰 面板（日报 / 源 / 设置）、设置页卡片 —— 全部客户端渲染，永不进会话日志
+- 🧰 **46 个精选源**，覆盖科技 / 科学 / 国际 / 财经 / 人文 / 开发，从中国大陆实测可达；源标签页里随意增删停启（连续失败 3 次的源自动降级 24 小时后轮换回来）
+- 🤖 **`rss_daily` 对话工具** —— `run` / `status` / `redo` / `deliver`，直接吩咐 agent "生成今天的新闻日报"也行
+- 🔌 **无界面模式** —— `py/daily.py` 可脱离 dsh 独立跑，对接任意 OpenAI 兼容端点：
+
+  ```sh
+  RSS_LLM_ENDPOINT=https://api.deepseek.com/v1 RSS_LLM_KEY=sk-... \
+    python py/daily.py --state-dir ~/.rss-daily
+  ```
 
 ## 配置
 
-改配置:在 profile 的补丁层(`$DSH_HOME/profiles/web/cordis.patch.yml`)覆盖该行:
-
-```yaml
-- insert:
-    - id: rss-daily
-      name: dsh-rss-daily
-      config:
-        time: "08:00"          # 本地时间,每天一次
-        targets:
-          - type: serverchan   # Server酱 sendkey
-            key: SCTxxxxxxxx
-          - type: telegram
-            token: "123456:ABC..."
-            chatId: "-1001234567890"
-```
+默认值开箱即用，面板覆盖一切。主要开关：
 
 | 键 | 默认 | 含义 |
 |---|---|---|
-| `enabled` | `true` | 定时开关(agent 工具不受影响) |
-| `time` | `"08:00"` | 本地 HH:MM;错过 <12h 开机补跑 |
-| `stateDir` | `$DSH_HOME/rss-daily` | 源/去重历史/outbox 所在目录 |
-| `sourcesFile` | `stateDir/sources.json` | 你的源列表;首次运行自动播种包内 46 源默认表 |
+| `time` | `08:00` | 每天本地 HH:MM 运行（错过 <12h 开机补跑） |
+| `targets[]` | `[]` | 投递目标；≥1 个成功即算送达 |
 | `digestItems` | `8` | 每日最多条数 |
-| `llmMode` | `harness` | `harness`(用 dsh 的模型)或 `none`(仅规则) |
-| `llmProvider` / `llmModel` | 第一个可用 | 指定用哪个 harness 模型做编辑 |
-| `footer` | `""` | 自定义日报尾注 |
-| `targets[]` | `[]` | 投递目标;≥1 个成功即算送达 |
+| `llmMode` | `harness` | `harness`（用 dsh 的模型）或 `none`（仅规则） |
+| `broadcast` | `true` | 对话内插播开关 |
+| `stateDir` | `~/.dsh/rss-daily` | 源 / 去重历史 / outbox 目录 |
 
-源条目格式(`sources.json`):`{ "name", "url", "category", "tier" (1–3) }`。内置列表从中国大陆实测可达;加源随意——连续失败 3 次的源自动降级 24h 后轮换回来。
+进阶用户也可以在 profile 的 `cordis.patch.yml` 里覆盖配置行；HTTP API 与管线阶段见下文。
 
-## 使用
+## 工作原理
 
-- **自动**:每天 `time` 生成并推送;错过的话开机补跑。
-- **网页面板**:每个会话头部有 **📰 按钮**——打开即见今日日报(tag 彩标 + 来源链接)、**源**标签页(查看全部 46 源、停用/启用、添加自己的源)、**设置**标签页(改自动播报时间、投递目标、每日条数——经 `rss-daily` settings 命名空间保存,定时器实时重排)。**获取今日日报 / 重新生成** 按钮即时跑管线,带阶段转圈动画(抓取中→模型编辑中→投递中);全部客户端渲染,**不进会话日志、不占上下文**。同一份设置表也出现在 设置 → 插件 → 插件配置。
-- **对话内插播**:今天的日报生成后,会**以模型回答的样式**自动出现在当前对话的聊天流里(位置在最后一条消息和输入框之间)——同样是无边框文本流 + markdown 排版(标题、有序列表、来源链接),生成过程中先显示"今日要闻生成中 · 模型编辑中…"一行。这条"消息"是纯前端 DOM(React portal),排版规则抄自宿主 markdown 渲染器并全部走主题变量,与真实模型回答观感一致;**只显示、不写会话日志、不占模型上下文**。"今天不再显示"只影响本浏览器,重新生成或第二天的新日报会再次出现;设置标签页里的"在对话里插播日报"可整体关掉(`broadcast`,默认开)。
-- **对话里**:直接吩咐 agent——它有 `rss_daily` 工具(`run` / `status` / `redo` / `deliver`),比如"现在生成今天的新闻日报"(这条路会占上下文;面板不会)。
-- **无界面/系统 cron**:管线可独立运行,LLM 走任意 OpenAI 兼容端点:
-
-```sh
-python py/daily.py --state-dir ~/.rss-daily            # 单进程跑完(规则模式)
-RSS_LLM_ENDPOINT=https://api.deepseek.com/v1 \
-RSS_LLM_KEY=sk-... RSS_LLM_MODEL=deepseek-chat \
-python py/daily.py --state-dir ~/.rss-daily            # 带 LLM 编辑
-python py/daily.py --stage confirm --state-dir ~/.rss-daily   # 送达成功后确认
+```
+46 源 ──▶ 抓取(健康度/超时/去重) ──▶ ~20 条候选
+                                          │
+                        ctx.llm 主编编排(失败降级规则模式)
+                                          │
+                            日报 ──▶ webhook 投递 ──▶ confirm
+                                          │
+                          对话内插播(纯前端,零上下文)
 ```
 
-## HTTP API(进阶)
+`py/daily.py` 可独立脚本化（`--stage fetch|finalize|confirm|status`，stdout 输出单行 JSON），插件本体驱动的就是这些阶段。**送达成功前绝不 confirm** —— 确认过的条目会永久进入 14 天去重窗口。
 
-网页面板走的是同源 API `/rss-daily/api/*`(仅在带 webserver 的 profile 注册):`GET status`、`POST run`、`POST redo`、`GET/PUT sources`、`POST config`。投递目标里的密钥在响应中打码;写回时带打码值的字段保留原值。所有写入先过字段白名单校验再落盘。
+## HTTP API（进阶）
 
-## 管线阶段(进阶)
+同源 API `/rss-daily/api/*`（仅带 webserver 的 profile 注册）：`GET status`、`POST run`、`POST redo`、`GET/PUT sources`、`POST config`。投递目标里的密钥在响应中打码；写回时带打码值的字段保留原值。所有写入先过字段白名单校验再落盘。
 
-`py/daily.py` 可独立脚本化,stdout 输出单行 JSON:
+## 依赖
 
-```sh
-python py/daily.py --stage fetch --state-dir DIR    # → {"status":"READY","prompt":...}
-python py/daily.py --stage finalize --llm-reply 文件 --state-dir DIR
-python py/daily.py --stage confirm --state-dir DIR
-python py/daily.py --stage status --state-dir DIR
-```
-
-插件本体走的就是这些阶段:`fetch` 产出主编 prompt → 插件经 `ctx.llm` 流式调用 → `finalize` 解析回复(垃圾输出降级规则模式)→ 插件投递 → `confirm` 标记当天完成。**送达成功前不要 confirm**——确认后的条目会永久进入 14 天去重窗口。
+- dsh，使用 `web`（或任意常驻）profile
+- Python 3.9+ 且装了 `feedparser`：`pip install feedparser`
+- Node.js ≥ 18（dsh 自带）
 
 ## 许可
 

@@ -13,6 +13,7 @@
     "lib",
     "py/daily.py",
     "py/sources.default.json",
+    "docs",
     "cordis.patch.yml",
     "README.md",
     "README.zh.md",
