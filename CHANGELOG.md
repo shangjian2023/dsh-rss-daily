@@ -1,5 +1,14 @@
 # Changelog
 
+## 0.2.1 - 2026-08-22
+
+Stability fixes.
+
+- Keep the in-chat digest broadcast out of blank conversations so the composer remains visible
+- Emit a valid object JSON Schema for `rss_daily` when `@deepseek-ai/dsh-tools` cannot be resolved from a linked installation
+- Add offline regression tests for the broadcast policy and tool schema
+- Split deterministic unit tests from the network-dependent delivery smoke test
+
 ## 0.1.0 - 2026-08-22
 
 Initial release.

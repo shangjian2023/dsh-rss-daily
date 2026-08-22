@@ -1,6 +1,6 @@
 {
   "name": "dsh-rss-daily",
-  "version": "0.2.0",
+  "version": "0.2.1",
   "description": "dsh plugin: daily RSS news digest from 46 curated sources, LLM-edited via the model already configured in dsh, delivered to your IM via webhook (ServerChan / PushDeer / WeCom / Telegram / Bark / gotify / custom).",
   "type": "module",
   "main": "lib/index.js",
@@ -11,10 +11,12 @@
   },
   "files": [
     "lib",
-    "py",
+    "py/daily.py",
+    "py/sources.default.json",
     "cordis.patch.yml",
     "README.md",
-    "README.zh.md"
+    "README.zh.md",
+    "CHANGELOG.md"
   ],
   "dsh": {
     "bundle": {
@@ -30,7 +32,8 @@
     }
   },
   "scripts": {
-    "test": "node --test test/"
+    "test": "node --test test/*.test.mjs",
+    "test:smoke": "node --test test/smoke.mjs"
   },
   "keywords": [
     "dsh-plugin",
