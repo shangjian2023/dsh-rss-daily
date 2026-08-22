@@ -1,5 +1,17 @@
 # Changelog
 
+## 0.3.2 - 2026-08-23
+
+Mobile & robustness pass.
+
+- Phone-width layout: the panel opens near-fullscreen (dynamic-viewport aware), the settings grid collapses to a single column, delivery-target rows wrap their key fields below the select, and the conversation-header button drops its text label
+- Touch: all buttons get >=36px touch targets on coarse pointers; inputs render at 16px to stop iOS Safari's focus auto-zoom
+- Digest lines wrap long tokens (`overflow-wrap:anywhere`) so nothing overflows on narrow screens
+- Robustness: every panel action (get/regenerate, save config, save sources) now catches network errors and shows them in the UI instead of failing silently; fetches time out after 20s instead of hanging on flaky mobile networks
+- Battery: status polling pauses while the tab is hidden (panel and settings card)
+- Defensive normalization of `targets` in the settings form; modal exposes `role="dialog"`
+
+
 ## 0.3.1 - 2026-08-23
 
 - Fix the digest disappearing right after midnight: the browser-side date vs server-reported "today" comparison could diverge across the day boundary and suppress the current digest; the digest now shows whenever it exists (its own date is in the title, and a newer digest replaces it automatically)
