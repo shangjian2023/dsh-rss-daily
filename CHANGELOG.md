@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.3.0 - 2026-08-22
+
+- The in-chat digest now renders as a genuine model reply: it mounts at the end of the host message column (inheriting exact width, indentation and message spacing), drops the card header/emoji/bold tags, and keeps only host-style muted action buttons
+- Fallback to composer-seat placement only if the message column cannot be located after sustained retries
+
 ## 0.2.2 - 2026-08-22
 
 - Fix the in-chat digest never appearing after startup on a blank conversation: the mount point now keeps looking for a populated conversation instead of giving up after 10 s, and re-mounts when the host node is detached by a conversation switch
