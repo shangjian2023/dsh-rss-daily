@@ -46,6 +46,7 @@ No YAML editing required — everything (schedule, targets, sources, digest size
 ## Highlights
 
 - 🖥 **Three UIs, zero context cost**: the in-chat broadcast, the 📰 panel (digest / sources / settings), and the plugin settings card — all rendered client-side, never entering the session log
+- 📝 **The broadcast is a real-looking reply**: the digest body renders through the host's own `MarkdownText` component (the exact component behind genuine assistant messages), streams in with a typing cadence, and hides its action row until done — it looks like the model answering, yet costs zero context tokens
 - 🧰 **46 curated sources** across tech / science / world / finance / humanities / dev, reachability-tested from mainland China; add or disable your own in the sources tab (unhealthy sources auto-degrade and rotate back)
 - 🤖 **`rss_daily` agent tool** — `run` / `status` / `redo` / `deliver`, so you can also just ask the agent *"generate today's news digest"*
 - 🔌 **Headless mode** — `py/daily.py` runs standalone with any OpenAI-compatible endpoint, no dsh required:

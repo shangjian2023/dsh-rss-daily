@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.4.0 - 2026-08-24
+
+The in-chat broadcast now IS a model reply, visually.
+
+- Digest body renders through the host's own `MarkdownText` component (statically available from `@deepseek-ai/dsh-client-ui-primitives`) — the exact component, CSS, link styling and list rendering behind genuine assistant messages, instead of a hand-copied markdown imitation
+- New-digest reveal plays a typing cadence: the text streams in prefix-by-prefix in streaming render state with the action row hidden until done, exactly like a message being generated; `prefers-reduced-motion` skips straight to the full text
+- Native copy affordance: a Copy action (host clipboard helper + host icon) joins the action row; older browsers/hosts without the primitives module fall back to the previous hand-rolled rendering
+- A page loaded in a background tab no longer leaves the broadcast stuck empty — visibility changes fast-forward an unfinished reveal to the full text
 ## 0.3.7 - 2026-08-24
 
 Iconography pass — no more emoji.
