@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.4.1 - 2026-08-24
+
+- Clicking **Get today's digest** or **Regenerate** in the panel now lifts a same-day "Hide for today": an explicit request is intent to see the digest, so the in-chat broadcast reappears (and plays its typing reveal) instead of staying suppressed until midnight
+
 ## 0.4.0 - 2026-08-24
 
 The in-chat broadcast now IS a model reply, visually.

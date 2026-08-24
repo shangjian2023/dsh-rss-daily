@@ -1,6 +1,6 @@
 {
   "name": "dsh-rss-daily",
-  "version": "0.4.0",
+  "version": "0.4.1",
   "description": "dsh plugin: daily RSS news digest from 46 curated sources, LLM-edited via the model already configured in dsh, delivered to your IM via webhook (ServerChan / PushDeer / WeCom / Telegram / Bark / gotify / custom).",
   "type": "module",
   "main": "lib/index.js",
