@@ -61,7 +61,7 @@ Defaults are sensible; the panel covers everything. The main knobs:
 
 | Key | Default | Meaning |
 |---|---|---|
-| `time` | `08:00` | Local HH:MM to run daily (boot catch-up if missed <12 h) |
+| `time` | `08:00` | Local HH:MM to run daily (boot catch-up if missed <12 h). The digest title date is computed in Beijing time (UTC+8) |
 | `targets[]` | `[]` | Delivery targets; delivered = at least one succeeded |
 | `digestItems` | `8` | Max items per digest |
 | `llmMode` | `harness` | `harness` (use dsh's model) or `none` (rule-based only) |

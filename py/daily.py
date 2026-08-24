@@ -37,6 +37,7 @@ import signal
 import ssl
 import sys
 import time
+import urllib.error
 import urllib.request
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from datetime import datetime, timezone, timedelta
@@ -80,9 +81,26 @@ MIN_TEXT_LEN = 150           # 低于此长度抓原文页补全
 
 BEIJING = timezone(timedelta(hours=8))
 UA = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0 Safari/537.36"
+# 默认校验 TLS 证书(防 MITM 往日报里注入内容);个别源自签/坏证书链时
+# 单请求降级重试一次并记 stderr,不再全局关闭校验。
 CTX = ssl.create_default_context()
-CTX.check_hostname = False
-CTX.verify_mode = ssl.CERT_NONE
+CTX_LOOSE = ssl.create_default_context()
+CTX_LOOSE.check_hostname = False
+CTX_LOOSE.verify_mode = ssl.CERT_NONE
+
+
+def urlopen_maybe_loose(req, timeout):
+    """证书验证失败 → 降级不校验重试一次;其他错误原样抛。"""
+    try:
+        return urllib.request.urlopen(req, timeout=timeout, context=CTX)
+    except urllib.error.URLError as e:
+        if isinstance(getattr(e, "reason", None), ssl.SSLError):
+            print(f"[tls] 证书校验失败,降级重试: {req.full_url[:80]}", file=sys.stderr)
+            return urllib.request.urlopen(req, timeout=timeout, context=CTX_LOOSE)
+        raise
+    except ssl.SSLError:
+        print(f"[tls] 证书校验失败,降级重试: {req.full_url[:80]}", file=sys.stderr)
+        return urllib.request.urlopen(req, timeout=timeout, context=CTX_LOOSE)
 
 TIER_SCORE = {1: 10, 2: 7, 3: 4}
 SIGNAL_WORDS = {
@@ -277,7 +295,7 @@ def pick_sources(all_sources, health, state_file, per_day):
 def fetch_one(src, timeout):
     req = urllib.request.Request(src["url"], headers={"User-Agent": UA})
     t0 = time.monotonic()
-    resp = urllib.request.urlopen(req, timeout=timeout, context=CTX)
+    resp = urlopen_maybe_loose(req, timeout)
     try:
         raw = resp.read(RSS_MAX_BYTES)
     finally:
@@ -358,7 +376,7 @@ def fetch_newsflash():
             req = urllib.request.Request(
                 f"https://newsflash.sh/api/events?category={cat}&limit=40",
                 headers={"User-Agent": UA})
-            resp = urllib.request.urlopen(req, timeout=10, context=CTX)
+            resp = urlopen_maybe_loose(req, timeout=10)
             data = json.loads(resp.read().decode("utf-8"))
             resp.close()
             evs = []
@@ -394,7 +412,7 @@ def fetch_newsflash():
 
 def fetch_page_text(url):
     req = urllib.request.Request(url, headers={"User-Agent": UA})
-    resp = urllib.request.urlopen(req, timeout=PAGE_TIMEOUT, context=CTX)
+    resp = urlopen_maybe_loose(req, timeout=PAGE_TIMEOUT)
     try:
         html = resp.read(PAGE_MAX_BYTES).decode("utf-8", errors="replace")
     finally:
@@ -529,8 +547,7 @@ def llm_call_endpoint(prompt):
             data=json.dumps(payload).encode("utf-8"),
             headers={"Content-Type": "application/json", "Authorization": f"Bearer {key}"},
             method="POST")
-        resp = urllib.request.urlopen(req, timeout=min(LLM_TIMEOUT_S, max(5, remaining() - 10)),
-                                      context=CTX)
+        resp = urlopen_maybe_loose(req, timeout=min(LLM_TIMEOUT_S, max(5, remaining() - 10)))
         try:
             return json.loads(resp.read().decode("utf-8"))["choices"][0]["message"]["content"].strip()
         finally:

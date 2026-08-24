@@ -61,7 +61,7 @@ dsh plugin --profile web add github:shangjian2023/dsh-rss-daily
 
 | 键 | 默认 | 含义 |
 |---|---|---|
-| `time` | `08:00` | 每天本地 HH:MM 运行（错过 <12h 开机补跑） |
+| `time` | `08:00` | 每天本地 HH:MM 运行（错过 <12h 开机补跑）。日报标题日期按北京时间（UTC+8）计算 |
 | `targets[]` | `[]` | 投递目标；≥1 个成功即算送达 |
 | `digestItems` | `8` | 每日最多条数 |
 | `llmMode` | `harness` | `harness`（用 dsh 的模型）或 `none`（仅规则） |

@@ -1,5 +1,14 @@
 # Changelog
 
+## 0.3.6 - 2026-08-24
+
+Hardening pass (second review sweep + official-style audit).
+
+- **TLS certificate verification is now on by default** for all feed / page / API fetches (it was globally disabled, which allowed a MITM to inject content into the digest). Sources with broken or self-signed chains retry once unverified per request and log a `[tls]` note to stderr
+- Fetch stage `LOCKED` (another instance holds the state lock) is no longer misreported as "no fresh news"; the agent tool now says a concurrent run holds the lock
+- Agent tool `redo` no longer deletes the outbox while another run is in flight (could deliver a digest that then failed to confirm)
+- Panel closes on Escape; removed the dangling `sourceMappingURL` reference to a map file that is not shipped
+- README (zh/en) documents the timezone semantics: schedule follows the machine clock, digest title date is Beijing time (UTC+8)
 ## 0.3.5 - 2026-08-24
 
 Fixes found in a full live pass against the dsh web profile.
