@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.3.7 - 2026-08-24
+
+Iconography pass — no more emoji.
+
+- All UI glyphs (newspaper, close, plus, check) are now inline Lucide SVG geometry (MIT), inheriting the active theme via `currentColor` — light/dark both correct with zero extra CSS
+- Motion: the header button sways gently on a slow loop, panel and settings titles stroke-draw themselves in, check marks draw on appear, close/plus rotate 90° on hover; everything respects `prefers-reduced-motion`
+- Panel still closes on Escape; touch-target sizing is unchanged
 ## 0.3.6 - 2026-08-24
 
 Hardening pass (second review sweep + official-style audit).
