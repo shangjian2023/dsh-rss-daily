@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.3.5 - 2026-08-24
+
+Fixes found in a full live pass against the dsh web profile.
+
+- `/api/status` reported the outbox date as "today": a stale unconfirmed outbox (e.g. left overnight) made every poller see yesterday's date, and during a regenerate the field briefly fell back to the last sent date. `today` is now computed locally (same clock the scheduler uses) and the digest's own date is exposed as `digestDate`
+- Agent tool `deliver` no longer re-sends a stale overnight outbox digest as if it were today's news (tells you to `run` first instead)
+- Run-state `phaseDetail` no longer lingers (as a stale `{'delivered': true}`) after a run finishes
+- The in-chat broadcast poller pauses while its tab is hidden, like the panel and settings card already did
 ## 0.3.4 - 2026-08-23
 
 - README now defaults to Chinese (GitHub & npm landing page); the English version moved to README.en.md
