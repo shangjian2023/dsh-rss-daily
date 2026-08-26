@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased (0.5.0-dev)
+## 0.5.0 - 2026-08-26
 
 - Digest language setting (zh | en): editor prompt, one-liners and title follow it; English tag vocabulary (AI/Tech/World/…) with matching panel colors
 - Digest timezone setting (UTC+8 / UTC-5 / UTC+5:30): digest dates and day boundaries no longer assume Beijing time
