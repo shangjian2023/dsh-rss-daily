@@ -1,5 +1,14 @@
 # Changelog
 
+## Unreleased (0.5.0-dev)
+
+- Digest language setting (zh | en): editor prompt, one-liners and title follow it; English tag vocabulary (AI/Tech/World/…) with matching panel colors
+- Digest timezone setting (UTC+8 / UTC-5 / UTC+5:30): digest dates and day boundaries no longer assume Beijing time
+- Delivery transparency: per-target last outcome (ok/attempts) is recorded and shown next to each target, with a "retry failed targets" action that redelivers only what failed
+- First-run onboarding card in the panel when no delivery target is configured
+- Sources import/export (JSON) in the Sources tab — share or back up your tuned source list
+- Release workflow: npm publish with provenance on tag push (needs NPM_TOKEN secret)
+
 ## 0.4.1 - 2026-08-24
 
 - Clicking **Get today's digest** or **Regenerate** in the panel now lifts a same-day "Hide for today": an explicit request is intent to see the digest, so the in-chat broadcast reappears (and plays its typing reveal) instead of staying suppressed until midnight
