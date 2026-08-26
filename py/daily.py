@@ -80,6 +80,24 @@ DEDUP_JACCARD = 0.65
 MIN_TEXT_LEN = 150           # 低于此长度抓原文页补全
 
 BEIJING = timezone(timedelta(hours=8))
+
+
+def parse_tz(spec):
+    """'UTC+8' / 'UTC-5' / 'UTC+5:30' -> tzinfo;非法回退东八区"""
+    m = re.fullmatch(r"UTC([+-])(\d{1,2})(?::(\d{2}))?", (spec or "").strip().upper())
+    if not m:
+        return BEIJING
+    sign = -1 if m.group(1) == "-" else 1
+    try:
+        delta = sign * timedelta(hours=int(m.group(2)), minutes=int(m.group(3) or 0))
+        if not (-timedelta(hours=24) < delta < timedelta(hours=24)):
+            return BEIJING
+        return timezone(delta)
+    except Exception:
+        return BEIJING
+
+
+ACTIVE_TZ = BEIJING  # main 里按 --tz 覆盖;所有日期取值统一走它
 UA = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0 Safari/537.36"
 # 默认校验 TLS 证书(防 MITM 往日报里注入内容);个别源自签/坏证书链时
 # 单请求降级重试一次并记 stderr,不再全局关闭校验。
@@ -137,7 +155,7 @@ def save_json(path, data):
 
 
 def today_str():
-    return datetime.now(BEIJING).strftime("%Y-%m-%d")
+    return datetime.now(ACTIVE_TZ).strftime("%Y-%m-%d")
 
 
 def acquire_lock(lock_file):
@@ -498,17 +516,41 @@ EDITOR_PROMPT = """你是「每日要闻」的主编,面向一位高素养读者
 TAG_VOCAB = {"AI", "科技", "科学", "国际", "财经", "人文", "开发",
              "健康", "环境", "社会", "商业", "产品", "研究"}
 
+EDITOR_PROMPT_EN = """You are the editor of the "Daily Digest", preparing a daily news briefing for a well-informed reader. Below are today's candidate stories (id | source | category | title | excerpt).
 
-def build_prompt(pool, digest_items):
+Tasks:
+1. **Merge duplicates**: keep only one story per event, the most informative one
+2. **Drop low value**: weeklies/roundups/compilations/recruiting/bootcamps/PR pieces/pure developer trivia/pure academic abstract dumps
+3. **Balance topics**: tech, science, world, finance, culture, health, environment, dev are all eligible; pick by information value and impact, no single-topic bias, at most 2 per category; skip weak categories
+4. Pick {n} items; prefer fewer over filler
+5. **One line per item (<=30 words)**: grounded in the given excerpt, with concrete facts (numbers/versions/prices/capability changes/conclusions); no fluff, no invention; render non-English news in English, keep key proper nouns
+6. **Tag each item** with exactly one of: AI/Tech/Science/World/Finance/Culture/Dev/Health/Environment/Society/Business/Product/Research
+7. **newsflash items**: sources starting with newsflash· come from a cross-verified event graph, titles are often foreign; if an RSS item covers the same event keep the more reliable one
+
+Candidates:
+{cands}
+
+Output JSON only: {{"items":[{{"n":id, "tag":"category", "line":"one-liner"}}, ...], "merged":[merged-away ids], "dropped":[dropped ids]}}"""
+
+EN_TAGS = {"AI", "Tech", "Science", "World", "Finance", "Culture", "Dev",
+           "Health", "Environment", "Society", "Business", "Product", "Research"}
+TAG_VOCABS = {"zh": TAG_VOCAB, "en": EN_TAGS}
+
+
+def editor_prompt(lang="zh"):
+    return EDITOR_PROMPT_EN if lang == "en" else EDITOR_PROMPT
+
+
+def build_prompt(pool, digest_items, lang="zh"):
     lines = []
     for i, c in enumerate(pool, 1):
         text = (c.get("text") or c.get("title", ""))[:400].replace("\n", " ")
         nf = f"(✚{c['corroboration']}家)" if c.get("corroboration") else ""
         lines.append(f"[{i}] {c['source']} | {c.get('category', '')} | {c['title'][:70]}{nf} | {text}")
-    return EDITOR_PROMPT.format(n=digest_items, cands="\n".join(lines))
+    return editor_prompt(lang).format(n=digest_items, cands="\n".join(lines))
 
 
-def parse_reply(text, pool):
+def parse_reply(text, pool, lang="zh"):
     """解析 LLM 回复 → picked 列表;垃圾输出返回 None"""
     m = re.search(r"\{.*\}", text or "", re.S)
     if not m:
@@ -525,7 +567,7 @@ def parse_reply(text, pool):
             tag = str(it.get("tag") or "").strip()
             if 1 <= n <= len(pool) and len(line) >= 8 and n not in used_n:
                 used_n.add(n)
-                if tag not in TAG_VOCAB:
+                if tag not in TAG_VOCABS.get(lang, TAG_VOCAB):
                     tag = pool[n - 1].get("category", "新闻")
                 out.append({"cand": pool[n - 1], "line": cut_line(line), "tag": tag})
         except Exception:
@@ -590,6 +632,7 @@ def rule_edit(cands):
 # ── 格式 ──
 
 DIGEST_TITLE = "每日要闻"
+DIGEST_TITLES = {"zh": DIGEST_TITLE, "en": "Daily Digest"}
 FOOTER = ""  # 可用 --footer 自定义,如 openclaw 版的「回复深搜 N」联动
 
 def item_tag(p):
@@ -613,14 +656,21 @@ def cut_line(s, n=ONE_LINER_MAX):
     if len(s) <= n:
         return s
     for i in range(n, 10, -1):
-        if s[i - 1] in "。！？；，、":
-            return s[:i].rstrip("，、；")
+        if s[i - 1] in "。！？；，、!?;,.":
+            return s[:i].rstrip("，、；,;")
     return s[:n]
 
 
-def format_digest(date_cn, lines, footer=""):
+def digest_date(lang="zh"):
+    """日报标题日期:zh 中文年月日,en 用 Aug 26, 2026"""
+    if lang == "en":
+        return datetime.now(ACTIVE_TZ).strftime("%b %d, %Y")
+    return datetime.now(ACTIVE_TZ).strftime("%Y年%m月%d日")
+
+
+def format_digest(date_cn, lines, footer="", lang="zh"):
     body = "\n\n".join(f"{i+1}. {l}" for i, l in enumerate(lines))
-    text = f"{DIGEST_TITLE} {date_cn}\n\n{body}"
+    text = f"{DIGEST_TITLES.get(lang, DIGEST_TITLE)} {date_cn}\n\n{body}"
     if footer:
         text += f"\n\n{footer}"
     return text
@@ -770,7 +820,7 @@ def stage_fetch(p, args):
     rule_picked = cap_per_tag(rule_edit(pool)) if pool else []
     rule_digest, rule_items = None, []
     if rule_picked:
-        date_cn = datetime.now(BEIJING).strftime("%Y年%m月%d日")
+        date_cn = digest_date(args.lang)
         rule_digest = format_digest(date_cn,
                                     [f"【{item_tag(x)}】{x['line']}" for x in rule_picked],
                                     args.footer)
@@ -784,10 +834,11 @@ def stage_fetch(p, args):
 
     save_json(p.outbox, {
         "date": today_str(),
-        "generated_at": datetime.now(BEIJING).isoformat(),
+        "generated_at": datetime.now(ACTIVE_TZ).isoformat(),
         "confirmed": False,
         "prompt": build_prompt(pool, args.digest_items) if pool else "",
         "pool": pool_lite,
+        "lang": args.lang,
         "rule_digest": rule_digest or "",
         "rule_items": rule_items,
         "digest_text": "",
@@ -799,6 +850,7 @@ def stage_fetch(p, args):
 
 def stage_finalize(p, args):
     outbox = load_json(p.outbox, {})
+    lang = outbox.get("lang", "zh")
     if not outbox or outbox.get("date") != today_str():
         emit({"status": "NO_OUTBOX", "date": today_str()})
         return
@@ -817,7 +869,7 @@ def stage_finalize(p, args):
             else:
                 reply_text = open(args.llm_reply, encoding="utf-8").read()
         if reply_text:
-            picked = parse_reply(reply_text, outbox["pool"])
+            picked = parse_reply(reply_text, outbox["pool"], lang)
             if picked:
                 used_llm = True
             else:
@@ -835,9 +887,9 @@ def stage_finalize(p, args):
             return
     else:
         picked = cap_per_tag(picked)
-        date_cn = datetime.now(BEIJING).strftime("%Y年%m月%d日")
+        date_cn = digest_date(lang)
         outbox["digest_text"] = format_digest(
-            date_cn, [f"【{item_tag(x)}】{x['line']}" for x in picked], args.footer)
+            date_cn, [f"【{item_tag(x)}】{x['line']}" for x in picked], args.footer, lang)
         outbox["items"] = picked_to_items(picked)
         outbox["used_llm"] = used_llm
     save_json(p.outbox, outbox)
@@ -862,16 +914,16 @@ def stage_confirm(p, args):
     dated = pushed.get("dated", [])
     for it in outbox["items"]:
         dated.append({"d": outbox["date"], "h": title_hash(it["title"]), "t": it["title"]})
-    cutoff = (datetime.now(BEIJING) - timedelta(days=PUSHED_KEEP_DAYS)).strftime("%Y-%m-%d")
+    cutoff = (datetime.now(ACTIVE_TZ) - timedelta(days=PUSHED_KEEP_DAYS)).strftime("%Y-%m-%d")
     dated = [x for x in dated if x["d"] >= cutoff][-PUSHED_KEEP_ITEMS:]
     save_json(p.pushed, {"hashes": [x["h"] for x in dated], "titles": [x["t"] for x in dated],
                          "dated": dated})
 
     outbox["confirmed"] = True
-    outbox["confirmed_at"] = datetime.now(BEIJING).isoformat()
+    outbox["confirmed_at"] = datetime.now(ACTIVE_TZ).isoformat()
     save_json(p.outbox, outbox)
     save_json(p.sent, {"last_sent_date": outbox["date"],
-                       "confirmed_at": datetime.now(BEIJING).isoformat(),
+                       "confirmed_at": datetime.now(ACTIVE_TZ).isoformat(),
                        "items_count": len(outbox["items"])})
     emit({"status": "CONFIRMED", "date": outbox["date"], "items": len(outbox["items"])})
 
@@ -904,7 +956,7 @@ def run_legacy(p, args):
         picked = llm_call_endpoint(outbox["prompt"])
         if picked:
             picked = cap_per_tag(picked)
-            date_cn = datetime.now(BEIJING).strftime("%Y年%m月%d日")
+            date_cn = digest_date(args.lang)
             outbox["digest_text"] = format_digest(
                 date_cn, [f"【{item_tag(x)}】{x['line']}" for x in picked], args.footer)
             outbox["items"] = picked_to_items(picked)
@@ -932,9 +984,14 @@ def main():
     ap.add_argument("--digest-items", type=int, default=DIGEST_ITEMS)
     ap.add_argument("--per-day", type=int, default=SOURCES_PER_DAY,
                     help="每日抓取源数(测试用)")
+    ap.add_argument("--lang", choices=["zh", "en"], default="zh", help="日报语言")
+    ap.add_argument("--tz", default="UTC+8", help="日报日期时区,如 UTC+8 / UTC-5 / UTC+5:30")
     ap.add_argument("--force", action="store_true",
                     help="fetch:无视当日已送幂等门,重选重投(redo)")
     args = ap.parse_args()
+
+    global ACTIVE_TZ
+    ACTIVE_TZ = parse_tz(args.tz)
 
     p = Paths(args)
     lock = acquire_lock(p.lock)

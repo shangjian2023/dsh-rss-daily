@@ -1,5 +1,6 @@
 """纯函数单测:清洗/去重/类目限额/截断逻辑,不触网不落盘。"""
 import hashlib
+from datetime import timedelta
 import importlib.util
 import re
 from pathlib import Path
@@ -71,3 +72,38 @@ def test_cut_line_punctuates():
 
 def test_cut_line_hard_cut_without_punct():
 	assert daily.cut_line("a" * 40, 30) == "a" * 30
+
+
+def test_parse_tz():
+	assert daily.parse_tz("UTC+8").utcoffset(None) == timedelta(hours=8)
+	assert daily.parse_tz("UTC-5").utcoffset(None) == timedelta(hours=-5)
+	assert daily.parse_tz("UTC+5:30").utcoffset(None) == timedelta(hours=5, minutes=30)
+	assert daily.parse_tz("bogus").utcoffset(None) == timedelta(hours=8)
+	assert daily.parse_tz("UTC+99").utcoffset(None) == timedelta(hours=8)
+
+
+def test_digest_date_shape():
+	daily.ACTIVE_TZ = daily.parse_tz("UTC+9")
+	try:
+		import re as _re
+		assert _re.search(r"\d{4}年\d{2}月\d{2}日", daily.digest_date("zh"))
+		assert _re.search(r"[A-Z][a-z]{2} \d{2}, \d{4}", daily.digest_date("en"))
+	finally:
+		daily.ACTIVE_TZ = daily.BEIJING
+
+
+def test_editor_prompt_lang():
+	assert "主编" in daily.editor_prompt("zh")
+	assert "editor" in daily.editor_prompt("en").lower()
+
+
+def test_parse_reply_en_tags():
+	pool = [{"title": "t", "link": "l", "source": "s", "category": "Tech"}]
+	reply = '{"items":[{"n":1,"tag":"Tech","line":"A concrete fact with numbers 42 and version 3.2."}]}'
+	out = daily.parse_reply(reply, pool, "en")
+	assert out and out[0]["tag"] == "Tech"
+
+
+def test_cut_line_ascii_punct():
+	s = "a" * 10 + ". the rest of the sentence continues well past the limit"
+	assert daily.cut_line(s, 30) == "a" * 10 + "."
