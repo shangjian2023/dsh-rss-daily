@@ -5,6 +5,7 @@
 [中文说明](README.md)
 
 [![npm](https://img.shields.io/npm/v/dsh-rss-daily)](https://www.npmjs.com/package/dsh-rss-daily)
+[![npm downloads](https://img.shields.io/npm/dw/dsh-rss-daily)](https://www.npmjs.com/package/dsh-rss-daily)
 [![License: MIT](https://img.shields.io/badge/license-MIT-green)](LICENSE)
 
 ## What it looks like

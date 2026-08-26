@@ -3,6 +3,7 @@
 > **一句话：每天早上 8 点，dsh 自动给你端上一份主编级的要闻日报** —— 用你已经配好的模型编辑、送到你的微信 / Telegram，还会像一条普通回复一样出现在对话里（不占任何上下文）。
 
 [![npm](https://img.shields.io/npm/v/dsh-rss-daily)](https://www.npmjs.com/package/dsh-rss-daily)
+[![npm downloads](https://img.shields.io/npm/dw/dsh-rss-daily)](https://www.npmjs.com/package/dsh-rss-daily)
 [![License: MIT](https://img.shields.io/badge/license-MIT-green)](LICENSE)
 
 [English README](README.en.md)
