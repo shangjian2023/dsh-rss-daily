@@ -6,6 +6,8 @@
 
 [![npm](https://img.shields.io/npm/v/dsh-rss-daily)](https://www.npmjs.com/package/dsh-rss-daily)
 [![npm downloads](https://img.shields.io/npm/dw/dsh-rss-daily)](https://www.npmjs.com/package/dsh-rss-daily)
+[![awesome · DSH plugin](https://awesome-dsh-plugin.com/badge.svg)](https://awesome-dsh-plugin.com)
+[![CI](https://github.com/shangjian2023/dsh-rss-daily/actions/workflows/ci.yml/badge.svg)](https://github.com/shangjian2023/dsh-rss-daily/actions/workflows/ci.yml)
 [![License: MIT](https://img.shields.io/badge/license-MIT-green)](LICENSE)
 
 ## What it looks like

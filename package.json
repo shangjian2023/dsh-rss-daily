@@ -38,6 +38,9 @@
   },
   "keywords": [
     "dsh-plugin",
+    "dsh",
+    "deepseek-harness",
+    "deepseek",
     "rss",
     "news",
     "digest",
@@ -53,5 +56,9 @@
   "repository": {
     "type": "git",
     "url": "git+https://github.com/shangjian2023/dsh-rss-daily.git"
+  },
+  "homepage": "https://github.com/shangjian2023/dsh-rss-daily#readme",
+  "bugs": {
+    "url": "https://github.com/shangjian2023/dsh-rss-daily/issues"
   }
 }
