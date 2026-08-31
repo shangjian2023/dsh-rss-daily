@@ -1,5 +1,9 @@
 # Changelog
 
+## Unreleased
+
+- New: MCP server (`mcp/server.py`) exposes the pipeline as MCP tools — `rss_status` / `rss_fetch` / `rss_finalize` / `rss_confirm` — so Claude Code, Codex, opencode and any other MCP client can drive the digest interactively; the host agent acts as editor and delivery channel, and the state directory is shared with the dsh plugin (idempotency + fetch locking). Long fetches return `RUNNING` after a short inline wait and are polled via `rss_status`. Windows note: child processes must be spawned with `stdin=DEVNULL` — inheriting the MCP stdio pipe delays child exit by seconds
+
 ## 0.5.0 - 2026-08-26
 
 - Digest language setting (zh | en): editor prompt, one-liners and title follow it; English tag vocabulary (AI/Tech/World/…) with matching panel colors

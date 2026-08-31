@@ -88,10 +88,24 @@ Power users can also overlay the config row in the profile's `cordis.patch.yml`;
 
 `py/daily.py` is independently scriptable (`--stage fetch|finalize|confirm|status`, single-line JSON on stdout); the plugin drives exactly these stages. Never confirms before at least one delivery succeeds — confirmed items enter the 14-day dedup window permanently.
 
+## MCP (for other agents)
+
+`mcp/server.py` exposes the same pipeline as [MCP](https://modelcontextprotocol.io) tools, so Claude Code, Codex, opencode, Cursor — any MCP client — can drive it: `rss_status`, `rss_fetch`, `rss_finalize`, `rss_confirm`. The host agent acts as both the editor (pick & rewrite per the returned prompt) and the delivery channel (show the digest to the user).
+
+The state directory is shared with the dsh plugin by default (idempotency and fetch locking honored across both); scheduled delivery stays with the dsh plugin or cron — MCP is for interactive use.
+
+One-liner for Claude Code (user scope, all projects):
+
+```bash
+claude mcp add --scope user rss-daily -- python /path/to/dsh-rss-daily/mcp/server.py
+```
+
+See [`mcp/README.md`](mcp/README.md) for Codex / opencode configs and the long-task polling convention.
+
 ## Requirements
 
 - dsh with the `web` (or any long-running) profile
-- Python 3.9+ with `feedparser` (`pip install feedparser`)
+- Python 3.9+ with `feedparser` (`pip install feedparser`); add `pip install mcp` for the MCP server
 - Node.js ≥ 18 (bundled with dsh)
 
 ## License

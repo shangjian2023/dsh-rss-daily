@@ -92,10 +92,24 @@ dsh plugin --profile web add github:shangjian2023/dsh-rss-daily
 
 同源 API `/rss-daily/api/*`（仅带 webserver 的 profile 注册）：`GET status`、`POST run`、`POST redo`、`GET/PUT sources`、`POST config`。投递目标里的密钥在响应中打码；写回时带打码值的字段保留原值。所有写入先过字段白名单校验再落盘。
 
+## MCP（给其他 Agent 用）
+
+`mcp/server.py` 把同一条管线暴露成 [MCP](https://modelcontextprotocol.io) 工具，Claude Code / Codex / opencode / Cursor 等任何 MCP 客户端都能用：`rss_status`（查状态）、`rss_fetch`（抓取出编辑提示词）、`rss_finalize`（把编辑结果落稿）、`rss_confirm`（确认送达）。宿主 agent 既是主编（按提示词挑选改写），也是投递渠道（把日报展示给用户）。
+
+状态目录默认与 dsh 插件共享（幂等门互认、抓取锁互斥）；定时投递仍由 dsh 插件或 cron 负责，MCP 管交互式操作。
+
+一行配进 Claude Code（用户级，所有项目可用）：
+
+```bash
+claude mcp add --scope user rss-daily -- python /path/to/dsh-rss-daily/mcp/server.py
+```
+
+Codex / opencode 配置、长任务轮询约定见 [`mcp/README.md`](mcp/README.md)。
+
 ## 依赖
 
 - dsh，使用 `web`（或任意常驻）profile
-- Python 3.9+ 且装了 `feedparser`：`pip install feedparser`
+- Python 3.9+ 且装了 `feedparser`：`pip install feedparser`（走 MCP 再加 `pip install mcp`）
 - Node.js ≥ 18（dsh 自带）
 
 ## 许可
