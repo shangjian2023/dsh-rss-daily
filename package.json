@@ -17,7 +17,8 @@
     "cordis.patch.yml",
     "README.md",
     "README.en.md",
-    "CHANGELOG.md"
+    "CHANGELOG.md",
+    "mcp"
   ],
   "dsh": {
     "bundle": {
@@ -44,7 +45,9 @@
     "rss",
     "news",
     "digest",
-    "daily-briefing"
+    "daily-briefing",
+    "mcp",
+    "model-context-protocol"
   ],
   "engines": {
     "node": ">=18"
