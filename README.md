@@ -79,7 +79,7 @@ dsh plugin --profile web add github:shangjian2023/dsh-rss-daily
 ```
 46 源 ──▶ 抓取(健康度/超时/去重) ──▶ ~20 条候选
                                           │
-                        ctx.llm 主编编排(失败降级规则模式)
+                        ctx.llm 主编编排(失败→翻译兜底→规则模式)
                                           │
                             日报 ──▶ webhook 投递 ──▶ confirm
                                           │
@@ -87,6 +87,24 @@ dsh plugin --profile web add github:shangjian2023/dsh-rss-daily
 ```
 
 `py/daily.py` 可独立脚本化（`--stage fetch|finalize|confirm|status`，stdout 输出单行 JSON），插件本体驱动的就是这些阶段。**送达成功前绝不 confirm** —— 确认过的条目会永久进入 14 天去重窗口。
+
+### 编辑纪律（蒸馏自 [AIHOT](https://github.com/KKKKhazix/AIHOT)）
+
+AIHOT 是卡神开源的"自己找热点、自己写日报"网站框架；本插件的编辑管线是它的插件化蒸馏——信源是综合要闻而非仅 AI，跑在 dsh 内部而非三进程网站：
+
+| AIHOT 概念 | 本插件对应 |
+|---|---|
+| 预筛 + 两次独立评分 + 分级门槛 | 规则预打分（信源分级×新鲜度×信号词）排出候选池，选题交给主编 |
+| 五轴评分 + 噪声压制表 | 主编 prompt 内化：实质份量/信息增量/证据强度/共鸣面/可用性；通稿、营销、例行小版本压分 |
+| 写作（中文标题/答案先行摘要/防幻觉） | 一句话铁律：答案前置、标题自洽（必点主体）、防幻觉（不加原文没有的数字版本、相对时间照抄） |
+| 聚簇与热度（独立来源计数） | 同事件合并只出一条；newsflash 多源交叉验证条目带 ✚N家 佐证徽标 |
+| 花钱的请求有回执 / 预算熔断 | `stateDir/llm-receipts.json` 记每笔调用，单日超 8 次熔断 |
+| 页面不调模型 / 一个读取层 | outbox JSON 是面板/插播/agent 工具/MCP/webhook 的唯一事实源 |
+| 日报导语 | `lead` 字段：≤60 字概括当日主线，面板与插播都展示 |
+
+**语言不降级**：主编调用失败时先做"翻译兜底"（规则选题 + 仅翻译改写），再不行才规则直出并诚实标注"原文标题速览"——日报语言是硬约束。
+
+**桌面版（DSH Desktop）适配**：默认模型跟随宿主 `agentDefaultModel`（你聊天用的那个），空回复自动翻倍预算重试（思考型模型会把 max_tokens 烧在推理上）；面板自带完整设计系统（实色明暗面板，打开时采样宿主亮度决定），不借宿主 CSS 变量——0.2.0-rc 宿主变量改名曾让面板透明到看不清；宿主没有 `settings.register()` 时面板配置自持久化到 `stateDir/panel-config.json`。
 
 ## HTTP API（进阶）
 

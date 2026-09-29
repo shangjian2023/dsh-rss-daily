@@ -496,41 +496,58 @@ def score_item(item, tier):
 
 # ── LLM 编辑(prompt 构建/解析在此,harness 与 endpoint 两种传输共用) ──
 
-EDITOR_PROMPT = """你是「每日要闻」的主编,面向一位高素养读者的每日新闻精选。下面是今天的候选新闻(编号|来源|类目|标题|正文摘录)。
+EDITOR_PROMPT = """你是「每日要闻」的主编,为一位高素养读者从今天的候选新闻(编号|来源|类目|标题|正文摘录)里编一份综合日报。不限领域:科技、科学、国际时政、财经、人文、健康、环境、开发皆可入选,按信息价值与影响力取舍,不偏向任何单一话题。
 
-任务:
-1. **合并同一事件**:多条报道同一件事时只留一条,选信息最完整的
-2. **剔除低价值**:周刊/周报/合集/盘点/征文/招聘/训练营/PR通稿/纯开发者向细节(某漏洞利用链等)/纯学术摘要堆砌
-3. **选题平衡**:科技、科学、国际时政、财经、人文、健康、环境、开发均可入选;按信息价值与影响力选,不偏向任何单一话题;同一类目最多选2条;若某类目候选都很弱就跳过
-4. 选 {n} 条,宁缺毋滥,凑不够就少选
-5. **每条写一句话(≤45字)**:必须基于所给正文,包含具体事实(数字/版本/价格/能力变化/结论),禁止空话和脑补;英文新闻用中文表述,关键专名保留英文
-6. **每条给类目标签 tag**:按文章内容本身归类(不是按来源栏目),只能从这些词里选一个:AI/科技/科学/国际/财经/人文/开发/健康/环境/社会/商业/产品/研究
+【选题:先在心里给每条独立估分,不输出分数】
+五个维度:实质份量(是不是时间线上的节点)> 信息增量(新事实/新数字/新方法)> 证据强度(正文是否支撑标题)> 共鸣面(多少读者觉得与自己有关)> 可用性(能否马上行动)。多维度都强才是大事。
+必须压住的噪声:通稿/客户案例/营销活动/招聘/训练营/例行小版本/纯快讯合集,一律低分;只有"即将推出"没有实质参数的预告低分;只有"更强更快"没有数据的体验谈低分。
 
-7. **newsflash条目**:来源以newsflash·开头的来自多源交叉验证事件图谱,标题多为外文,一句话末尾标注「✚N家」(N=佐证数);与RSS条目报道同一事件时保留更可信的一条
+【合并与配额】
+1. 多条报道同一事件只留一条,选信息最完整的
+2. newsflash·开头的条目来自多源交叉验证事件图谱:与RSS条目同事件时保留更可信的一条,一句话末尾保留「✚N家」佐证标注(N=佐证数)
+3. 同一类目最多2条;某类目候选都弱就整类跳过;选 {n} 条,宁缺毋滥,凑不够就少选
+
+【写作:每条一句话(≤45字),铁律】
+4. 答案前置:第一句就交代"谁做了什么、结果如何",不铺背景,不写"引发关注/值得注意"
+5. 标题自洽:必须点名核心主体(公司/产品/项目/人名);英文新闻一律用中文表述,关键专名与版本号保留英文;原标题只有版本号或代号的,把主体从来源或正文补进句子
+6. 防幻觉:只写所给正文明确提到的事实、数字、版本、价格;不确定的细节宁可删掉;相对时间(本周/近日)照抄不换算成具体日期;不加"首次/最大/唯一"等原文没有的排他词
+7. 每条给类目标签 tag:按文章内容本身归类(不是按来源栏目),只能从这些词里选一个:AI/科技/科学/国际/财经/人文/开发/健康/环境/社会/商业/产品/研究
+
+【导语】
+8. lead 字段:≤60字概括今天整体最重要的一条线索,只写列表里有的事实;没有值得概括的就给空字符串
 
 候选:
 {cands}
 
-只输出JSON: {{"items":[{{"n":编号, "tag":"类目", "line":"一句话"}}, ...], "merged":被合并丢弃的编号列表, "dropped":剔除的编号列表}}"""
+只输出JSON: {{"lead":"", "items":[{{"n":编号, "tag":"类目", "line":"一句话"}}, ...], "merged":被合并丢弃的编号列表, "dropped":剔除的编号列表}}"""
 
 TAG_VOCAB = {"AI", "科技", "科学", "国际", "财经", "人文", "开发",
              "健康", "环境", "社会", "商业", "产品", "研究"}
 
-EDITOR_PROMPT_EN = """You are the editor of the "Daily Digest", preparing a daily news briefing for a well-informed reader. Below are today's candidate stories (id | source | category | title | excerpt).
+EDITOR_PROMPT_EN = """You are the editor of the "Daily Digest", preparing a daily news briefing for a well-informed reader. Below are today's candidate stories (id | source | category | title | excerpt). All topics are eligible — tech, science, world, finance, culture, health, environment, dev — judged by information value and impact, with no single-topic bias.
 
-Tasks:
-1. **Merge duplicates**: keep only one story per event, the most informative one
-2. **Drop low value**: weeklies/roundups/compilations/recruiting/bootcamps/PR pieces/pure developer trivia/pure academic abstract dumps
-3. **Balance topics**: tech, science, world, finance, culture, health, environment, dev are all eligible; pick by information value and impact, no single-topic bias, at most 2 per category; skip weak categories
-4. Pick {n} items; prefer fewer over filler
-5. **One line per item (<=30 words)**: grounded in the given excerpt, with concrete facts (numbers/versions/prices/capability changes/conclusions); no fluff, no invention; render non-English news in English, keep key proper nouns
-6. **Tag each item** with exactly one of: AI/Tech/Science/World/Finance/Culture/Dev/Health/Environment/Society/Business/Product/Research
-7. **newsflash items**: sources starting with newsflash· come from a cross-verified event graph, titles are often foreign; if an RSS item covers the same event keep the more reliable one
+[Selection: score each candidate privately, never output scores]
+Five axes: substance (is it a node on the timeline) > information gain (new facts/numbers/methods) > evidence strength (does the body support the title) > resonance (how many readers care) > actionability. Strong on many axes makes a big story.
+Noise to suppress: press releases / customer-case PR / marketing / recruiting / bootcamps / routine minor releases / bare news-roundups score low; "coming soon" without concrete parameters scores low; "faster and better" testimonials without data score low.
+
+[Merge and quota]
+1. Multiple reports of the same event: keep only the most informative one
+2. Items whose source starts with newsflash· come from a cross-verified event graph: if an RSS item covers the same event keep the more reliable one, and keep the「✚N outlets」corroboration marker at the end of the line
+3. At most 2 per category; skip weak categories entirely; pick {n} items, prefer fewer over filler
+
+[Writing: one line per item (<=30 words), hard rules]
+4. Answer first: the first clause states who did what and with what result; no scene-setting, no "drawing attention"
+5. Self-contained title: name the core subject (company/product/project/person); render non-English news in English, keep key proper nouns and version numbers; if the original title is only a version number or codename, pull the subject in from the source or body
+6. Anti-hallucination: only facts, numbers, versions and prices explicitly present in the given excerpt; drop uncertain details rather than guess; copy relative time (this week/recently) as-is; never add "first/largest/only" unless the original says so
+7. Tag each item with exactly one of: AI/Tech/Science/World/Finance/Culture/Dev/Health/Environment/Society/Business/Product/Research
+
+[Lead]
+8. lead field: <=40 words summarizing today's single most important thread, using only facts that appear in your selected list; empty string if nothing sums up
 
 Candidates:
 {cands}
 
-Output JSON only: {{"items":[{{"n":id, "tag":"category", "line":"one-liner"}}, ...], "merged":[merged-away ids], "dropped":[dropped ids]}}"""
+Output JSON only: {{"lead":"", "items":[{{"n":id, "tag":"category", "line":"one-liner"}}, ...], "merged":[merged-away ids], "dropped":[dropped ids]}}"""
 
 EN_TAGS = {"AI", "Tech", "Science", "World", "Finance", "Culture", "Dev",
            "Health", "Environment", "Society", "Business", "Product", "Research"}
@@ -573,6 +590,73 @@ def parse_reply(text, pool, lang="zh"):
         except Exception:
             continue
     return out or None
+
+
+def parse_lead(text, lang="zh"):
+    """从同一份 LLM 回复里取导语;没有或超长返回空串"""
+    m = re.search(r"\{.*\}", text or "", re.S)
+    if not m:
+        return ""
+    try:
+        lead = str(json.loads(m.group(0)).get("lead") or "").strip()
+    except Exception:
+        return ""
+    limit = 120 if lang == "zh" else 200
+    return lead[:limit]
+
+
+def _cjk_ratio(s):
+    s = s or ""
+    return (sum(1 for ch in s if "一" <= ch <= "鿿") / len(s)) if s else 0.0
+
+
+def _mostly_foreign(items):
+    """过半条目几乎没有中文 → 语言目标没达成(用于诚实标注降级)"""
+    if not items:
+        return False
+    foreign = sum(1 for it in items if _cjk_ratio(it.get("one_liner", "")) < 0.3)
+    return foreign > len(items) * 0.5
+
+
+DEGRADED_NOTES = {
+    "zh": "※ 模型编辑暂不可用,以下为原文标题速览",
+    "en": "※ Model editing unavailable; raw titles below",
+}
+
+
+def apply_translate_reply(outbox, reply_text, lang, footer=""):
+    """翻译兜底:把 LLM 回复的中文一句话套到规则选题上;套上≥1条才算成功"""
+    m = re.search(r"\{.*\}", reply_text or "", re.S)
+    if not m:
+        return False
+    try:
+        data = json.loads(m.group(0))
+    except Exception:
+        return False
+    items = outbox.get("rule_items", [])
+    applied = 0
+    for it in data.get("items", []):
+        try:
+            n = int(it["n"])
+            line = str(it.get("line") or "").strip()
+            if 1 <= n <= len(items) and len(line) >= 4:
+                items[n - 1]["one_liner"] = cut_line(line)
+                applied += 1
+        except Exception:
+            continue
+    if not applied:
+        return False
+    note = DEGRADED_NOTES.get(lang, "") if _mostly_foreign(items) else ""
+    outbox["items"] = items
+    outbox["digest_text"] = format_digest(
+        digest_date(lang),
+        [f"【{x.get('tag') or x.get('category') or '新闻'}】{x['one_liner']}" for x in items],
+        footer, lang, note=note)
+    outbox["used_llm"] = True
+    outbox["llm_mode"] = "translate"
+    outbox["degraded"] = bool(note)
+    outbox["note"] = note
+    return True
 
 
 def llm_call_endpoint(prompt):
@@ -668,9 +752,15 @@ def digest_date(lang="zh"):
     return datetime.now(ACTIVE_TZ).strftime("%Y年%m月%d日")
 
 
-def format_digest(date_cn, lines, footer="", lang="zh"):
+def format_digest(date_cn, lines, footer="", lang="zh", lead="", note=""):
+    """标题 →(可选降级注记)→(可选导语)→ 有序条目 →(可选尾注)"""
     body = "\n\n".join(f"{i+1}. {l}" for i, l in enumerate(lines))
-    text = f"{DIGEST_TITLES.get(lang, DIGEST_TITLE)} {date_cn}\n\n{body}"
+    head = f"{DIGEST_TITLES.get(lang, DIGEST_TITLE)} {date_cn}"
+    if note:
+        head += "\n\n" + note
+    if lead:
+        head += "\n\n" + lead
+    text = head + "\n\n" + body
     if footer:
         text += f"\n\n{footer}"
     return text
@@ -680,7 +770,8 @@ def picked_to_items(picked):
     return [{"n": i + 1, "title": p["cand"]["title"], "link": p["cand"]["link"],
              "source": p["cand"]["source"], "category": p["cand"]["category"],
              "tag": item_tag(p),
-             "one_liner": p["line"], "score": p["cand"].get("score", 0)}
+             "one_liner": p["line"], "score": p["cand"].get("score", 0),
+             "corroboration": p["cand"].get("corroboration", 0)}
             for i, p in enumerate(picked)]
 
 
@@ -855,12 +946,24 @@ def stage_finalize(p, args):
         emit({"status": "NO_OUTBOX", "date": today_str()})
         return
 
+    # 翻译兜底优先于复用检查:它是显式请求,必须套用
+    if args.translate_reply:
+        reply_text = sys.stdin.read() if args.translate_reply == "-" \
+            else open(args.translate_reply, encoding="utf-8").read()
+        if apply_translate_reply(outbox, reply_text, lang, args.footer):
+            save_json(p.outbox, outbox)
+            emit({"status": "OK", "digest": outbox["digest_text"], "used_llm": True,
+                  "llm_mode": "translate", "items": len(outbox["items"])})
+            return
+        print("[finalize] 翻译回复解析失败,降级规则模式", file=sys.stderr)
+
     # 已有当日未确认文本且未显式要求重做 → 直接复用
     if outbox.get("digest_text") and not args.redo:
-        emit({"status": "OK", "digest": outbox["digest_text"]})
+        emit({"status": "OK", "digest": outbox["digest_text"],
+              "llm_mode": outbox.get("llm_mode", "rule")})
         return
 
-    used_llm, picked = False, None
+    used_llm, picked, lead = False, None, ""
     if not args.rule and outbox.get("prompt") and outbox.get("pool"):
         reply_text = ""
         if args.llm_reply:
@@ -872,16 +975,29 @@ def stage_finalize(p, args):
             picked = parse_reply(reply_text, outbox["pool"], lang)
             if picked:
                 used_llm = True
+                lead = parse_lead(reply_text, lang)
             else:
                 print("[finalize] LLM 回复解析失败,降级规则模式", file=sys.stderr)
         else:
             print("[finalize] 未提供 LLM 回复,使用规则模式", file=sys.stderr)
 
     if not picked:
-        # 规则产物已在 fetch 阶段生成
-        outbox["digest_text"] = outbox.get("rule_digest", "")
-        outbox["items"] = outbox.get("rule_items", [])
+        # 规则产物已在 fetch 阶段生成;目标语言没达成时诚实标注降级
+        items = outbox.get("rule_items", [])
+        note = DEGRADED_NOTES.get(lang, "") if _mostly_foreign(items) else ""
+        if items:
+            outbox["digest_text"] = format_digest(
+                digest_date(lang),
+                [f"【{x.get('tag') or x.get('category') or '新闻'}】{x['one_liner']}" for x in items],
+                args.footer, lang, note=note)
+        else:
+            outbox["digest_text"] = outbox.get("rule_digest", "")
+        outbox["items"] = items
         outbox["used_llm"] = False
+        outbox["llm_mode"] = "rule"
+        outbox["degraded"] = bool(note)
+        outbox["note"] = note
+        outbox["lead"] = ""
         if not outbox["digest_text"]:
             emit({"status": "EMPTY", "date": today_str()})
             return
@@ -889,12 +1005,18 @@ def stage_finalize(p, args):
         picked = cap_per_tag(picked)
         date_cn = digest_date(lang)
         outbox["digest_text"] = format_digest(
-            date_cn, [f"【{item_tag(x)}】{x['line']}" for x in picked], args.footer, lang)
+            date_cn, [f"【{item_tag(x)}】{x['line']}" for x in picked],
+            args.footer, lang, lead=lead)
         outbox["items"] = picked_to_items(picked)
         outbox["used_llm"] = used_llm
+        outbox["llm_mode"] = "edit"
+        outbox["degraded"] = False
+        outbox["note"] = ""
+        outbox["lead"] = lead
     save_json(p.outbox, outbox)
     emit({"status": "OK", "digest": outbox["digest_text"],
-          "used_llm": outbox["used_llm"], "items": len(outbox["items"])})
+          "used_llm": outbox["used_llm"], "llm_mode": outbox.get("llm_mode", ""),
+          "items": len(outbox["items"])})
 
 
 def stage_confirm(p, args):
@@ -933,11 +1055,17 @@ def stage_status(p, _args):
     sent = load_json(p.sent, {})
     emit({"today": today_str(), "last_sent_date": sent.get("last_sent_date"),
           "digest": outbox.get("digest_text") or "",
+          "lead": outbox.get("lead", ""),
+          "items": outbox.get("items", []),
           "outbox": {"date": outbox.get("date"),
                      "confirmed": outbox.get("confirmed", False),
                      "empty": outbox.get("empty", False),
                      "has_digest": bool(outbox.get("digest_text")),
                      "used_llm": outbox.get("used_llm", False),
+                     "llm_mode": outbox.get("llm_mode", ""),
+                     "degraded": outbox.get("degraded", False),
+                     "note": outbox.get("note", ""),
+                     "lead": outbox.get("lead", ""),
                      "items": len(outbox.get("items", []))}})
 
 
@@ -977,6 +1105,7 @@ def main():
     ap.add_argument("--state-dir", default="", help="状态目录(源/去重/outbox 等)")
     ap.add_argument("--sources", default="", help="RSS 源配置 JSON 路径")
     ap.add_argument("--llm-reply", default="", help="finalize: LLM 回复文件路径('-'=stdin)")
+    ap.add_argument("--translate-reply", default="", help="finalize: 翻译兜底回复文件路径('-'=stdin),套到规则选题上")
     ap.add_argument("--rule", action="store_true", help="finalize: 强制规则模式")
     ap.add_argument("--redo", action="store_true", help="finalize: 忽略已有文本重新生成")
     ap.add_argument("--date", default="", help="confirm: 指定确认日期 YYYY-MM-DD")

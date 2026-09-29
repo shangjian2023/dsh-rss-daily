@@ -88,6 +88,10 @@ Power users can also overlay the config row in the profile's `cordis.patch.yml`;
 
 `py/daily.py` is independently scriptable (`--stage fetch|finalize|confirm|status`, single-line JSON on stdout); the plugin drives exactly these stages. Never confirms before at least one delivery succeeds — confirmed items enter the 14-day dedup window permanently.
 
+The editorial prompt suite is distilled from [AIHOT](https://github.com/KKKKhazix/AIHOT) (an open-source self-curating hot-news framework): five-axis private scoring with a noise-suppression table, answer-first one-liners, self-contained titles, anti-hallucination rules, an optional day `lead`, and per-event corroboration badges (✚N outlets). Selection may fall back to rules, but the digest language never does: a translate-only salvage pass runs before raw titles are shown (and those carry an explicit "raw titles" note).
+
+**DSH Desktop compatible**: the default model follows the host's `agentDefaultModel` selection; empty replies (thinking models burning the token budget on reasoning) retry once at doubled budget; every paid call is receipted with a daily budget breaker; the panel ships its own opaque light/dark design system (host CSS variables renamed in 0.2.0-rc once left it transparent); without a host settings service, panel config persists to `stateDir/panel-config.json`.
+
 ## MCP (for other agents)
 
 `mcp/server.py` exposes the same pipeline as [MCP](https://modelcontextprotocol.io) tools, so Claude Code, Codex, opencode, Cursor — any MCP client — can drive it: `rss_status`, `rss_fetch`, `rss_finalize`, `rss_confirm`. The host agent acts as both the editor (pick & rewrite per the returned prompt) and the delivery channel (show the digest to the user).

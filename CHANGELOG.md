@@ -1,5 +1,23 @@
 # Changelog
 
+## 0.6.0 - 2026-09-30
+
+Desktop-host adaptation + editorial pipeline distilled from [AIHOT](https://github.com/KKKKhazix/AIHOT) (卡神's open-source hot-news framework). The plugin stays a plugin — no Postgres, no worker fleet — but adopts AIHOT's editorial discipline where it pays off.
+
+**Why: on DSH Desktop 2.0.16 the digest came out in raw English and the panel was transparent.**
+
+- Root cause 1 (English): the LLM edit step silently fell back to rule mode — thinking models (qwen3.7-plus via relay) burned the whole 900-token budget on reasoning and returned empty content ("empty llm reply", host log 2026-09-29 19:51). Fixes:
+  - Default model now follows the host's `agentDefaultModel` selection (the model you chat with) instead of gambling on `listProviders()[0]`, which could land on a credential-less route on Desktop
+  - `maxTokens` default 900 → 3072, with an automatic one-shot retry at doubled budget on empty replies
+  - Translate salvage: if the edit call still fails, the rule-picked items go through a cheap translation-only LLM pass so the digest language never degrades (AIHOT: selection may fall back, writing must not)
+  - Honest degradation: when even that fails, the digest carries an explicit "raw titles" note and the panel badges it in warning color instead of passing English off as normal
+  - Every paid call is receipted to `stateDir/llm-receipts.json` with a daily call budget (8/day) so retries can never run away (AIHOT receipts + budget breaker)
+- Root cause 2 (transparent panel): the client bundle renamed/removed the `--dsw-*` variables the panel borrowed (`--dsw-alias-fill-l1`, `--dsw-shadow-lv3` gone; `--dsw-specific-menu` now indirected). The panel now ships its own self-contained design system: opaque light/dark palettes, theme decided by sampling the host surface luminance when the panel opens. The in-chat broadcast keeps using the host's native MarkdownText — it lives inside the message column where host styles still apply
+- Editor prompt distilled from AIHOT's prompt suite: five-axis private scoring with a noise-suppression table, answer-first one-liners, self-contained titles (subject must be named), anti-hallucination rules (no invented numbers/versions, relative dates copied as-is, no "first/largest/only"), plus an optional `lead` line summarizing the day (shown in panel and broadcast)
+- New-host compatibility: agent tool schema no longer trips the stricter 0.2.0-rc validator (`required: false` at property level is rejected); when the host has no `settings.register()` (DSH Desktop), panel-saved config persists to `stateDir/panel-config.json` and reloads as an overlay on startup — config always has a home
+- Panel digest tab restyled as a hot list: status chips (delivered / AI-edited / translated / raw), lead paragraph, per-item corroboration badges (✚N家 for cross-verified events)
+- `llmMaxTokens` is now editable in the settings tab
+
 ## Unreleased
 
 - New: MCP server (`mcp/server.py`) exposes the pipeline as MCP tools — `rss_status` / `rss_fetch` / `rss_finalize` / `rss_confirm` — so Claude Code, Codex, opencode and any other MCP client can drive the digest interactively; the host agent acts as editor and delivery channel, and the state directory is shared with the dsh plugin (idempotency + fetch locking). Long fetches return `RUNNING` after a short inline wait and are polled via `rss_status`. Windows note: child processes must be spawned with `stdin=DEVNULL` — inheriting the MCP stdio pipe delays child exit by seconds
