@@ -40,3 +40,14 @@ test("broadcast remains available in a populated conversation", () => {
 
 	assert.equal(conversationHasContent(scroller), true);
 });
+
+test("SettingsForm: 早退之后不得再出现任何 hook(React hooks 顺序违规=崩树)", () => {
+	const source = fs.readFileSync(new URL("../lib/client.js", import.meta.url), "utf8");
+	const m = source.match(/function SettingsForm\(\{ st \}\) \{([\s\S]*?)\n\t\t\}\n/);
+	assert.ok(m, "SettingsForm found in client.js");
+	const early = m[1].indexOf("if (!draft) return");
+	assert.ok(early > 0, "SettingsForm keeps its draft early-return");
+	assert.doesNotMatch(m[1].slice(early),
+		/\buse(State|Effect|Ref|Callback|Memo|Context|Reducer)\s*\(/,
+		"hooks after the early return change hook count between renders and crash the tree (0.5.0 regression)");
+});

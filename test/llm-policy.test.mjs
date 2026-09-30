@@ -39,7 +39,7 @@ test("completeWithPolicy: 空回复翻倍重试后成功,回执落两笔", async
 	const dir = tmp();
 	const ctx = mockCtx(["EMPTY", "中文正文"]);
 	const r = await completeWithPolicy(ctx, { prompt: "p", mode: "edit" },
-		{ fs, stateDir: dir, getDefaultSelection: () => ({ provider: "provA", model: "provA-m1" }) });
+		{ stateDir: dir, getDefaultSelection: () => ({ provider: "provA", model: "provA-m1" }) });
 	assert.equal(r.text, "中文正文");
 	assert.equal(r.attempts, 2);
 	assert.equal(r.model, "provA-m1");
@@ -54,11 +54,11 @@ test("completeWithPolicy: 两次都空 → 抛错;单日预算熔断", async () 
 	const dir = tmp();
 	const ctx = mockCtx(["EMPTY", "EMPTY"]);
 	await assert.rejects(
-		completeWithPolicy(ctx, { prompt: "p" }, { fs, stateDir: dir }),
+		completeWithPolicy(ctx, { prompt: "p" }, { stateDir: dir }),
 		/empty llm reply/);
 	// 已记 2 笔,把上限压到 2 → 再调直接熔断
 	await assert.rejects(
-		completeWithPolicy(ctx, { prompt: "p" }, { fs, stateDir: dir, maxCallsPerDay: 2 }),
+		completeWithPolicy(ctx, { prompt: "p" }, { stateDir: dir, maxCallsPerDay: 2 }),
 		/budget exhausted/);
 	fs.rmSync(dir, { recursive: true, force: true });
 });

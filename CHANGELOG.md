@@ -1,5 +1,17 @@
 # Changelog
 
+## 0.6.1 - 2026-09-30
+
+Bugfix sweep after the first Desktop run of 0.6.0.
+
+- **Settings tab no longer freezes the app**: `SettingsForm` kept a `useState` *after* its `draft` early-return — hook count changed between renders, React threw "Rendered more hooks" and, with no error boundary, took the whole host UI down. Hook moved above the early return (0.5.0-era bug, now also guarded by a source-level regression test)
+- **English digest, round 2 — fixed for real**: 0.6.0 passed `node:fs/promises` into a receipts module calling `readFileSync` — every LLM call threw before even reaching the model, so both the edit pass and the translate fallback died silently and rule mode won again. The receipts module now imports `node:fs` directly (the unit test had masked this by passing sync fs)
+- **Stale-box self-heal**: a pending outbox left in rule mode by a broken run (e.g. a schedule firing on crashed code) used to be reused forever — now the next run translates the rule picks in place instead of re-fetching everything; the budget breaker keeps it from repeating
+- An unparseable LLM reply (finalize falls back to rule internally) now also enters the salvage chain instead of shipping rule output silently
+- Receipts date bucket switched from UTC to local, matching the scheduler's day boundary
+- All plugin surfaces (panel, settings card, in-chat broadcast) are wrapped in an error boundary — a future render crash shows a one-line reason instead of blanking the app
+
+
 ## 0.6.0 - 2026-09-30
 
 Desktop-host adaptation + editorial pipeline distilled from [AIHOT](https://github.com/KKKKhazix/AIHOT) (卡神's open-source hot-news framework). The plugin stays a plugin — no Postgres, no worker fleet — but adopts AIHOT's editorial discipline where it pays off.
