@@ -1,5 +1,14 @@
 # Changelog
 
+## 0.6.2 - 2026-09-30
+
+Context footprint + broadcast frequency, both user-reported.
+
+- **The rss_daily agent tool is now opt-in (default off)**. Evidence from live sessions: the digest text never enters context (broadcast stays frontend-only), but the tool *definition* sits in every conversation's request header (~90 tokens) — and on DSH Desktop it only started doing so once 0.6.1 fixed the schema the old host rejected, which read as "the plugin occupies context again". Flip `agentTool` on in Settings if you want the model to drive the digest; the panel and the MCP sidecar cover the same ground without touching any conversation
+- **The in-chat broadcast now shows once per digest**: starting the reveal marks the digest as seen (only while the page is actually visible), so a new conversation — or switching conversations — no longer replays it. A fresh digest (next day, or after an explicit regenerate) shows once again. "Hide for today" and the panel-triggered unhide keep working; the current view keeps the card until you move on
+- Settings tab gains an agent-tool toggle next to the broadcast toggle
+
+
 ## 0.6.1 - 2026-09-30
 
 Bugfix sweep after the first Desktop run of 0.6.0.
