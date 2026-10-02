@@ -13,17 +13,33 @@ rss-daily MCP server (2026-08-31)
   rss_status   纯读文件查状态+运行检测,不碰 daily.py 的锁
 
 状态目录默认 ~/.dsh/rss-daily(与 dsh 插件共享:幂等门互认、.rss.lock 互斥),
-RSS_DAILY_STATE_DIR 可重定位(隔离测试用)。依赖: pip install mcp feedparser
+RSS_DAILY_STATE_DIR 可重定位(隔离测试用)。时区与插件配置对齐:插件配了非
+UTC+8 时区的话,给本 server 也设 RSS_DAILY_TZ=<同值>,否则两边的"今天"
+不是同一天、幂等门互不认账(audit M16)。依赖: pip install mcp feedparser
+(mcp 1.x 与 2.x 均可,import 层已自动适配)
 """
 import ctypes
+import ctypes.wintypes
 import json
 import os
+import re
 import subprocess
 import sys
 import time
 from datetime import datetime, timezone, timedelta
 
-from mcp.server.fastmcp import FastMCP
+try:
+    import msvcrt
+except ImportError:  # POSIX
+    msvcrt = None
+    import fcntl
+
+# mcp 1.x 的 FastMCP 在 2.x 改名为 MCPServer;不带版本约束的
+# `pip install mcp` 现在拿到 2.x,直接 import 会让 server 起不来(audit B1)
+try:
+    from mcp.server.fastmcp import FastMCP
+except ModuleNotFoundError:
+    from mcp.server.mcpserver import MCPServer as FastMCP
 
 BASE = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 DAILY = os.path.join(BASE, "py", "daily.py")
@@ -34,17 +50,37 @@ SENT = os.path.join(STATE_DIR, "rss-sent.json")
 LOCK = os.path.join(STATE_DIR, ".rss.lock")
 BEIJING = timezone(timedelta(hours=8))
 
+
+def _active_tz():
+    """与 dsh 插件的 --tz 同一个"今天":RSS_DAILY_TZ 配置后两边幂等门互认(audit M16)"""
+    spec = (os.environ.get("RSS_DAILY_TZ") or "").strip()
+    m = re.fullmatch(r"UTC([+-])(\d{1,2})(?::(\d{2}))?", spec.upper()) if spec else None
+    if not m:
+        return BEIJING
+    sign = -1 if m.group(1) == "-" else 1
+    return timezone(sign * timedelta(hours=int(m.group(2)), minutes=int(m.group(3) or 0)))
+
+
+ACTIVE_TZ = _active_tz()
+
+
+def _tz_args():
+    tz = (os.environ.get("RSS_DAILY_TZ") or "").strip() or "UTC+8"
+    return [] if tz.upper() == "UTC+8" else ["--tz", tz]
+
 FETCH_WAIT_S = 20   # rss_fetch 内联等待窗口(客户端默认工具超时 30s 内留余量)
 STAGE_TIMEOUT_S = 30
 
 _proc = None        # 本进程发起的 fetch 句柄(超时后跨工具调用追踪)
-_proc_since = 0.0
 
-mcp = FastMCP("rss-daily", instructions=(
-    "RSS 每日新闻日报管线。典型流程:rss_status 查状态 → rss_fetch 抓取(长任务,"
-    "RUNNING 时轮询 rss_status,完成后它会带出 prompt)→ 按 prompt 要求亲自完成编辑,"
-    "结果传 rss_finalize → 把日报展示给用户 → 用户认可后 rss_confirm 确认送达。"
-    "状态目录与 dsh 插件共享,确认后 dsh 今晨不再补发。"))
+try:
+    mcp = FastMCP("rss-daily", instructions=(
+        "RSS 每日新闻日报管线。典型流程:rss_status 查状态 → rss_fetch 抓取(长任务,"
+        "RUNNING 时轮询 rss_status,完成后它会带出 prompt)→ 按 prompt 要求亲自完成编辑,"
+        "结果传 rss_finalize → 把日报展示给用户 → 用户认可后 rss_confirm 确认送达。"
+        "状态目录与 dsh 插件共享,确认后 dsh 今晨不再补发。"))
+except TypeError:  # mcp 2.x 构造参数差异:instructions 不被接受就去掉
+    mcp = FastMCP("rss-daily")
 
 
 def _env():
@@ -61,7 +97,7 @@ def _stage(stage, extra=(), stdin_text=None, timeout=STAGE_TIMEOUT_S):
     stdin 必须显式 DEVNULL:子进程若继承本 server 的 stdin(MCP 管道),
     Windows 上进程退出会被拖住数秒,把秒级阶段变成超时(实测踩坑)。
     """
-    cmd = [sys.executable, DAILY, "--stage", stage, "--state-dir", STATE_DIR, *extra]
+    cmd = [sys.executable, DAILY, "--stage", stage, "--state-dir", STATE_DIR, *_tz_args(), *extra]
     try:
         if stdin_text is None:
             r = subprocess.run(cmd, capture_output=True, text=True,
@@ -108,6 +144,8 @@ def _pid_alive(pid):
     try:
         if os.name == "nt":
             kernel32 = ctypes.windll.kernel32
+            # restype 不显式声明时 64 位 HANDLE 会被截成 32 位 c_int(UB)
+            kernel32.OpenProcess.restype = ctypes.wintypes.HANDLE
             h = kernel32.OpenProcess(0x1000, False, pid)  # PROCESS_QUERY_LIMITED_INFORMATION
             if not h:
                 return False
@@ -117,17 +155,40 @@ def _pid_alive(pid):
                 return code.value == 259  # STILL_ACTIVE
             finally:
                 kernel32.CloseHandle(h)
+        # POSIX 分支:Windows 的 os.kill(pid,0) 是 TerminateProcess,不可达(nt 分支已 return)
         os.kill(pid, 0)
         return True
     except Exception:
         return False
 
 
-def _running():
-    """双路运行检测:本进程 fetch 句柄 + .rss.lock 里的 PID(dsh 插件等外进程)。
+def _lock_held():
+    """试锁探测 .rss.lock 是否被持有:失败=有抓取在跑。
+    不依赖锁文件可读——Windows 的 LockFile 会阻止其他句柄读被锁字节区间,
+    读 PID 的老路在插件/cron 抓取期间恒 PermissionError(audit H6)。"""
+    if not os.path.exists(LOCK):
+        return False
+    try:
+        f = open(LOCK, "a+")
+    except OSError:
+        return True  # 打不开按"在跑"保守处理
+    try:
+        if msvcrt is not None:
+            msvcrt.locking(f.fileno(), msvcrt.LK_NBLCK, 1)
+            msvcrt.locking(f.fileno(), msvcrt.LK_UNLCK, 1)
+        else:
+            fcntl.flock(f, fcntl.LOCK_EX | fcntl.LOCK_NB)
+            fcntl.flock(f, fcntl.LOCK_UN)
+        return False
+    except OSError:
+        return True
+    finally:
+        f.close()
 
-    残留死锁文件(进程已崩)不算运行——daily.py 的 acquire_lock 能自行重新抢锁。
-    """
+
+def _running():
+    """三路运行检测:本进程 fetch 句柄 → 锁文件 PID → 试锁。
+    残留死锁文件(进程已崩)不算运行——daily.py 的 acquire_lock 能自行重新抢锁。"""
     global _proc
     if _proc is not None:
         if _proc.poll() is None:
@@ -142,9 +203,11 @@ def _running():
         with open(LOCK, encoding="utf-8", errors="replace") as f:
             pid = f.read().strip()
     except OSError:
-        return False, None
-    if _pid_alive(pid):
+        pid = ""
+    if pid and _pid_alive(pid):
         return True, f"外部进程 pid={pid}(dsh 插件或系统 cron)"
+    if _lock_held():
+        return True, "外部进程持有抓取锁(dsh 插件或系统 cron)"
     return False, None
 
 
@@ -160,7 +223,7 @@ def rss_status() -> str:
     条数)/ digest_preview / running(是否有抓取在跑,dsh 插件发起的也能看到)。
     若当日候选已抓取但还没编辑,会一并返回 prompt(编辑任务说明+候选清单),
     宿主 agent 按其要求编辑后调 rss_finalize。"""
-    today = datetime.now(BEIJING).strftime("%Y-%m-%d")
+    today = datetime.now(ACTIVE_TZ).strftime("%Y-%m-%d")
     ob = _read_json(OUTBOX)
     today_ob = ob if ob.get("date") == today else {}
     run, run_by = _running()
@@ -211,7 +274,7 @@ def rss_fetch(force: bool = False, per_day: int = 0,
         extra.append("--force")
     if per_day and per_day > 0:
         extra += ["--per-day", str(per_day)]
-    cmd = [sys.executable, DAILY, "--stage", "fetch", "--state-dir", STATE_DIR, *extra]
+    cmd = [sys.executable, DAILY, "--stage", "fetch", "--state-dir", STATE_DIR, *_tz_args(), *extra]
     try:
         p = subprocess.Popen(cmd, stdin=subprocess.DEVNULL, stdout=subprocess.PIPE,
                              stderr=subprocess.PIPE,
@@ -221,8 +284,8 @@ def rss_fetch(force: bool = False, per_day: int = 0,
     try:
         out, err = p.communicate(timeout=max(5, wait_seconds))
     except subprocess.TimeoutExpired:
-        global _proc, _proc_since
-        _proc, _proc_since = p, time.time()
+        global _proc
+        _proc = p
         return _J({"status": "RUNNING", "child_pid": p.pid,
                    "hint": (
                        f"抓取超过 {wait_seconds}s 仍在跑;轮询 rss_status,"

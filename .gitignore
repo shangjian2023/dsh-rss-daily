@@ -8,5 +8,11 @@ py/.rss.lock
 py/sources.json
 .DS_Store
 .test-state/
-pnpm-lock.yaml
+.test-state-e2e/
+.pytest_cache/
+# 仓库内 stateDir 场景(把 stateDir 指到仓库内时的运行产物)
+py/panel-config.json
+py/delivery-last.json
+py/llm-last.json
+py/llm-receipts.json
 .local/

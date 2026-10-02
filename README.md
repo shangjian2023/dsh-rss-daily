@@ -24,7 +24,7 @@
 - **零额外 API key。** 编辑这步走 `ctx.llm`，用 dsh 现成的模型，不多花一分钱、不多配一个密钥。
 - **永不断更。** 模型调用失败自动降级规则模式照常出稿；错过定时段落，开机 12 小时内自动补跑。
 - **送到你读的地方。** Server酱 / PushDeer / 企业微信 / Telegram / Bark / gotify / 自定义 webhook，任一成功即算送达。
-- **生产级管线。** 移植自 2026 年 6 月起每天在生产环境运行、迭代过 9 版的私人脚本：源健康度自适应超时、feed 乱码修复、短摘要抓原文补全、420 秒硬预算、幂等两阶段送达（fetch → outbox → 投递 → confirm）。
+- **生产级管线。** 移植自 2026 年 6 月起每天在生产环境运行、迭代过 9 版的私人脚本：源健康度自适应超时、feed 乱码修复、短摘要抓原文补全、420 秒硬预算（POSIX 用 SIGALRM 硬中断；Windows 无此信号，靠逐请求超时 + 软预算检查兜底）、幂等两阶段送达（fetch → outbox → 投递 → confirm）。
 
 ## 安装（npm 推荐）
 
@@ -50,7 +50,7 @@ dsh plugin --profile web add github:shangjian2023/dsh-rss-daily
 
 - 🖥 **三个界面，零上下文消耗**：对话内插播、📰 面板（日报 / 源 / 设置）、设置页卡片 —— 全部客户端渲染，永不进会话日志
 - 📝 **插播即模型回答的原样**：日报正文用宿主同款 `MarkdownText` 渲染组件（与真实 assistant 消息同一组件、同一套样式），上屏时以打字机节奏渐显、完稿前不显示操作行——看起来就是模型在作答，但一个 token 的上下文都不占
-- 🧰 **46 个精选源**，覆盖科技 / 科学 / 国际 / 财经 / 人文 / 开发，从中国大陆实测可达；源标签页里随意增删停启（连续失败 3 次的源自动降级 24 小时后轮换回来）
+- 🧰 **46 个精选源**，覆盖 AI / 科技 / 科学 / 国际 / 财经 / 开发 / 人文 等 15 个类目，从中国大陆实测可达；源标签页里随意增删停启（连续失败 3 次的源自动降级 24 小时，恢复需连续成功 2 次）
 - 🤖 **`rss_daily` 对话工具** —— `run` / `status` / `redo` / `deliver`，直接吩咐 agent "生成今天的新闻日报"也行
 - 🔌 **无界面模式** —— `py/daily.py` 可脱离 dsh 独立跑，对接任意 OpenAI 兼容端点：
 
@@ -100,7 +100,7 @@ AIHOT 是卡神开源的"自己找热点、自己写日报"网站框架；本插
 | 聚簇与热度（独立来源计数） | 同事件合并只出一条；newsflash 多源交叉验证条目带 ✚N家 佐证徽标 |
 | 花钱的请求有回执 / 预算熔断 | `stateDir/llm-receipts.json` 记每笔调用，单日超 8 次熔断 |
 | 页面不调模型 / 一个读取层 | outbox JSON 是面板/插播/agent 工具/MCP/webhook 的唯一事实源 |
-| 日报导语 | `lead` 字段：≤60 字概括当日主线，面板与插播都展示 |
+| 日报导语 | `lead` 字段：提示词要求 ≤60 字概括当日主线（解析层按 120 字兜底截断），面板与插播都展示 |
 
 **语言不降级**：主编调用失败时先做"翻译兜底"（规则选题 + 仅翻译改写），再不行才规则直出并诚实标注"原文标题速览"——日报语言是硬约束。
 
@@ -108,7 +108,7 @@ AIHOT 是卡神开源的"自己找热点、自己写日报"网站框架；本插
 
 ## HTTP API（进阶）
 
-同源 API `/rss-daily/api/*`（仅带 webserver 的 profile 注册）：`GET status`、`POST run`、`POST redo`、`GET/PUT sources`、`POST config`。投递目标里的密钥在响应中打码；写回时带打码值的字段保留原值。所有写入先过字段白名单校验再落盘。
+同源 API `/rss-daily/api/*`（仅带 webserver 的 profile 注册）：`GET status`、`POST run`、`POST redo`、`POST redeliver`（重投，`{"onlyFailed":true}` 只投上次失败的目标）、`GET/PUT sources`、`POST config`。投递目标里的密钥在响应中打码；写回时带打码值的字段按目标类型回填原值。所有写入要求同源 + `Content-Type: application/json`（防跨站简单请求改写投递目标），并过字段白名单校验再落盘。
 
 ## MCP（给其他 Agent 用）
 
@@ -127,8 +127,8 @@ Codex / opencode 配置、长任务轮询约定见 [`mcp/README.md`](mcp/README.
 ## 依赖
 
 - dsh，使用 `web`（或任意常驻）profile
-- Python 3.9+ 且装了 `feedparser`：`pip install feedparser`（走 MCP 再加 `pip install mcp`）
-- Node.js ≥ 18（dsh 自带）
+- Python 3.9+ 且装了 `feedparser`：`pip install feedparser`（走 MCP 再加 `pip install mcp`，1.x 与 2.x 均可）
+- Node.js ≥ 22.19（对齐 dsh 宿主自身的 Node 要求；纯 JS 逻辑层兼容 18，但插件只能跑在 dsh 里）
 
 ## 许可
 

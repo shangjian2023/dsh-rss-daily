@@ -13,19 +13,33 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 11
       - uses: actions/setup-node@v4
         with:
-          node-version: 20
+          node-version: 22
           registry-url: https://registry.npmjs.org
+          cache: pnpm
       - uses: actions/setup-python@v5
         with:
           python-version: "3.13"
       - run: pip install feedparser pytest
       - run: python -m pytest py/test_daily.py -q
-      - run: npm install --no-fund --no-audit
-      - run: npm test
+      - run: pnpm install --frozen-lockfile
       - name: tag must match package.json version
         run: test "${GITHUB_REF_NAME#v}" = "$(node -p "require('./package.json').version")"
+      - run: npm test
+      - run: node --test test/smoke.mjs
+      - name: tarball content assertion (no bytecode, no untracked junk)
+        run: |
+          npm pack --silent
+          TARBALL=$(ls dsh-rss-daily-*.tgz)
+          if tar -tzf "$TARBALL" | grep -qE '__pycache__|\.pyc|\.local'; then
+            echo "::error::forbidden files in tarball"; exit 1
+          fi
+          echo "--- tarball contents ---"
+          tar -tzf "$TARBALL"
       - run: npm publish --provenance --access public
         env:
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}

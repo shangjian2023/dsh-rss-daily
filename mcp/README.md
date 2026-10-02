@@ -16,7 +16,7 @@ Claude Code / Codex / opencode / Cursor 等任何 MCP 客户端都能调用。
 | `rss_finalize` | 把编辑回复落稿（`reply` 传你的编辑结果；`rule=true` 规则版；`redo=true` 重生成） |
 | `rss_confirm` | 用户看过日报后确认送达（写幂等门，dsh 插件/cron 共享） |
 
-依赖：`pip install mcp feedparser`
+依赖：`pip install mcp feedparser`（mcp 1.x 与 2.x 均可，`server.py` 的 import 层已自动适配；只测过 CPython）
 
 ## 各客户端配置
 
@@ -53,6 +53,8 @@ args = ['D:\edge默认下载\dsh-rss-daily\mcp\server.py']
 
 - 默认 `~/.dsh/rss-daily`，与 dsh 插件**共享**：幂等门（`rss-sent.json`）互认，
   谁 confirm 了当日，另一边自动跳过；`.rss.lock` 互斥，两边同时抓取会得到 LOCKED。
+- 插件配置了非 UTC+8 时区时，给本 server 设 `RSS_DAILY_TZ=<同一个时区>`（如
+  `RSS_DAILY_TZ=UTC-5`），否则两边的"今天"不是同一天、幂等门互不认账。
 - 隔离测试：环境变量 `RSS_DAILY_STATE_DIR=<目录>` 重定位（源配置缺失会自动播种）。
 
 ## 长任务约定

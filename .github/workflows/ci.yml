@@ -11,14 +11,28 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        node: [18, 20, 22]
+        node: [22, 24] # 对齐 dsh 宿主的 engines(^22.19 || >=24);18/20 跑不了宿主,属无效覆盖
     steps:
       - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 11
       - uses: actions/setup-node@v4
         with:
           node-version: ${{ matrix.node }}
-      - run: npm install --no-fund --no-audit
-      - run: npm test
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm test
+      - name: tarball content assertion (no bytecode, expected files)
+        run: |
+          pnpm pack --silent 2>/dev/null || npm pack --silent
+          TARBALL=$(ls dsh-rss-daily-*.tgz)
+          if tar -tzf "$TARBALL" | grep -qE '__pycache__|\.pyc'; then
+            echo "::error::bytecode found in tarball"; exit 1
+          fi
+          for f in lib/index.js lib/client.js py/daily.py py/sources.default.json mcp/server.py cordis.patch.yml; do
+            tar -tzf "$TARBALL" | grep -q "package/$f" || { echo "::error::missing $f"; exit 1; }
+          done
 
   py:
     runs-on: ubuntu-latest
@@ -33,3 +47,17 @@ jobs:
           python-version: ${{ matrix.python }}
       - run: pip install feedparser pytest
       - run: python -m pytest py/test_daily.py -q
+
+  smoke:
+    # 端到端:真实抓源 → 规则出稿 → 本地 webhook 实收 → 幂等跳过(联网)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+      - run: pip install feedparser
+      - run: node --test test/smoke.mjs

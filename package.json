@@ -1,6 +1,6 @@
 {
   "name": "dsh-rss-daily",
-  "version": "0.6.2",
+  "version": "0.7.0",
   "description": "dsh plugin: daily RSS news digest from 46 curated sources, LLM-edited via the model already configured in dsh, delivered to your IM via webhook (ServerChan / PushDeer / WeCom / Telegram / Bark / gotify / custom).",
   "type": "module",
   "main": "lib/index.js",
@@ -15,10 +15,11 @@
     "py/sources.default.json",
     "docs",
     "cordis.patch.yml",
+    "mcp/server.py",
+    "mcp/README.md",
     "README.md",
     "README.en.md",
-    "CHANGELOG.md",
-    "mcp"
+    "CHANGELOG.md"
   ],
   "dsh": {
     "bundle": {
@@ -26,7 +27,6 @@
     },
     "client": {
       "inject": [
-        "@deepseek-ai/dsh-client-runtime",
         "@deepseek-ai/dsh-client-ui-conversation",
         "@deepseek-ai/dsh-client-ui-settings-plugins"
       ],
@@ -34,8 +34,9 @@
     }
   },
   "scripts": {
-    "test": "node --test test/*.test.mjs",
-    "test:smoke": "node --test test/smoke.mjs"
+    "test": "node --test \"test/*.test.mjs\"",
+    "test:smoke": "node --test test/smoke.mjs",
+    "test:all": "node --test \"test/*.test.mjs\" test/smoke.mjs"
   },
   "keywords": [
     "dsh-plugin",
@@ -50,7 +51,7 @@
     "model-context-protocol"
   ],
   "engines": {
-    "node": ">=18"
+    "node": ">=22.19.0"
   },
   "dependencies": {
     "@deepseek-ai/schemastery": "^3.18.0"

@@ -24,7 +24,7 @@ It's frontend-only: displayed in the chat, but **never written to the session lo
 - **Zero extra API keys.** The editorial pass goes through `ctx.llm` — whatever model your dsh already runs. No new credentials, no extra bill.
 - **It never misses a day.** If the model call fails, the digest degrades to a deterministic rule-based selection automatically. If dsh was down at the scheduled time, it catches up on next boot (within 12 h).
 - **It comes to you.** Webhook delivery to ServerChan / PushDeer / WeCom / Telegram / Bark / gotify / any custom endpoint. At least one success counts as delivered.
-- **Production-grade pipeline.** Ported from a personal script that has run daily since June 2026 through 9 revisions: per-source health tracking with adaptive timeouts, feed mojibake repair, full-text enrichment for thin summaries, a 420 s hard budget, and idempotent two-phase send (fetch → outbox → deliver → confirm).
+- **Production-grade pipeline.** Ported from a personal script that has run daily since June 2026 through 9 revisions: per-source health tracking with adaptive timeouts, feed mojibake repair, full-text enrichment for thin summaries, a 420 s hard budget (SIGALRM on POSIX; on Windows via per-request timeouts plus soft budget checks), and idempotent two-phase send (fetch → outbox → deliver → confirm).
 
 ## Quick start
 
@@ -50,7 +50,7 @@ No YAML editing required — everything (schedule, targets, sources, digest size
 
 - 🖥 **Three UIs, zero context cost**: the in-chat broadcast, the 📰 panel (digest / sources / settings), and the plugin settings card — all rendered client-side, never entering the session log
 - 📝 **The broadcast is a real-looking reply**: the digest body renders through the host's own `MarkdownText` component (the exact component behind genuine assistant messages), streams in with a typing cadence, and hides its action row until done — it looks like the model answering, yet costs zero context tokens
-- 🧰 **46 curated sources** across tech / science / world / finance / humanities / dev, reachability-tested from mainland China; add or disable your own in the sources tab (unhealthy sources auto-degrade and rotate back)
+- 🧰 **46 curated sources** across AI / tech / science / world / finance / dev / humanities and 15 categories in total, reachability-tested from mainland China; add or disable your own in the sources tab (sources failing 3 times in a row auto-degrade for 24 h; recovery needs 2 consecutive successes)
 - 🤖 **`rss_daily` agent tool** — `run` / `status` / `redo` / `deliver`, so you can also just ask the agent *"generate today's news digest"*
 - 🔌 **Headless mode** — `py/daily.py` runs standalone with any OpenAI-compatible endpoint, no dsh required:
 
@@ -109,8 +109,8 @@ See [`mcp/README.md`](mcp/README.md) for Codex / opencode configs and the long-t
 ## Requirements
 
 - dsh with the `web` (or any long-running) profile
-- Python 3.9+ with `feedparser` (`pip install feedparser`); add `pip install mcp` for the MCP server
-- Node.js ≥ 18 (bundled with dsh)
+- Python 3.9+ with `feedparser` (`pip install feedparser`); add `pip install mcp` for the MCP server (both mcp 1.x and 2.x work)
+- Node.js ≥ 22.19 (matches the dsh host's own Node requirement; the plain-JS layers stay 18-compatible, but the plugin only runs inside dsh)
 
 ## License
 

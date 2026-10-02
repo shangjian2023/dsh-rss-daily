@@ -22,13 +22,17 @@ dsh-rss-daily 核心管线 v1 (2026-08-22, 自 openclaw rss-fetch.py v9 移植)
                      "date", "prompt"?, "digest"?, "stats"?}
   --stage finalize  输入 --llm-reply FILE|-(LLM 原始回复)或 --rule;
                      {"status": "OK|EMPTY", "digest"}
-  --stage confirm   {"status": "CONFIRMED|ALREADY_CONFIRMED|NO_OUTBOX"}
+  --stage confirm   {"status": "CONFIRMED|ALREADY_CONFIRMED|NO_OUTBOX|DATE_MISMATCH"}
   --stage status    {"today", "last_sent_date", "outbox": {...}}
   (无 --stage: 兼容模式,单进程跑完直接打印日报文本,LLM 走 env endpoint)
+  锁:仅 fetch/finalize(及兼容模式整跑)抢独占锁;status/confirm 无锁可跑,
+  抓取期间 status 也返回完整状态对象而不是 LOCKED。
 
 依赖: python3.9+, pip install feedparser
 """
 import argparse
+import calendar
+import concurrent.futures
 import hashlib
 import json
 import os
@@ -41,6 +45,7 @@ import urllib.error
 import urllib.request
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from datetime import datetime, timezone, timedelta
+from urllib.parse import urlsplit
 
 try:
     import fcntl
@@ -76,10 +81,18 @@ RSS_MAX_BYTES = 300_000
 PUSHED_KEEP_DAYS = 14
 PUSHED_KEEP_ITEMS = 200
 ONE_LINER_MAX = 50
+ONE_LINER_MAX_EN = 200
 DEDUP_JACCARD = 0.65
 MIN_TEXT_LEN = 150           # 低于此长度抓原文页补全
 
 BEIJING = timezone(timedelta(hours=8))
+
+
+def pushed_keep(args):
+    """去重表条数上限:digest_items 调大时按 14 天满配算,避免条数封顶
+    先于 14 天到期生效、重复新闻重新入池(audit F-PY-20)"""
+    items = int(getattr(args, "digest_items", 0) or DIGEST_ITEMS)
+    return max(PUSHED_KEEP_ITEMS, items * PUSHED_KEEP_DAYS)
 
 
 def parse_tz(spec):
@@ -107,18 +120,22 @@ CTX_LOOSE.check_hostname = False
 CTX_LOOSE.verify_mode = ssl.CERT_NONE
 
 
-def urlopen_maybe_loose(req, timeout):
-    """证书验证失败 → 降级不校验重试一次;其他错误原样抛。"""
+def urlopen_maybe_loose(req, timeout, allow_loose=True):
+    """证书验证失败 → 降级不校验重试一次;其他错误原样抛。
+    allow_loose=False 用于携带凭据的请求(LLM 直连):降级重发等于把
+    API key 主动交给"让首连校验失败"的中间人,必须原样抛错。"""
     try:
         return urllib.request.urlopen(req, timeout=timeout, context=CTX)
     except urllib.error.URLError as e:
-        if isinstance(getattr(e, "reason", None), ssl.SSLError):
+        if allow_loose and isinstance(getattr(e, "reason", None), ssl.SSLError):
             print(f"[tls] 证书校验失败,降级重试: {req.full_url[:80]}", file=sys.stderr)
             return urllib.request.urlopen(req, timeout=timeout, context=CTX_LOOSE)
         raise
     except ssl.SSLError:
-        print(f"[tls] 证书校验失败,降级重试: {req.full_url[:80]}", file=sys.stderr)
-        return urllib.request.urlopen(req, timeout=timeout, context=CTX_LOOSE)
+        if allow_loose:
+            print(f"[tls] 证书校验失败,降级重试: {req.full_url[:80]}", file=sys.stderr)
+            return urllib.request.urlopen(req, timeout=timeout, context=CTX_LOOSE)
+        raise
 
 TIER_SCORE = {1: 10, 2: 7, 3: 4}
 SIGNAL_WORDS = {
@@ -142,7 +159,8 @@ def load_json(path, default=None):
         try:
             with open(path, encoding="utf-8") as f:
                 return json.load(f)
-        except (json.JSONDecodeError, IOError, OSError):
+        except (ValueError, OSError):
+            # ValueError 覆盖 JSONDecodeError 与 UnicodeDecodeError(GBK 写入的状态文件)
             pass
     return {} if default is None else default
 
@@ -159,17 +177,25 @@ def today_str():
 
 
 def acquire_lock(lock_file):
-    f = open(lock_file, "w")
+    # "a+" 不截断:竞争者用 "w" 打开会先抹掉持有者 PID,旁路存活探测(mcp
+    # server 的 _running)就失明。抢锁成功后自己 truncate 再写 PID。
+    f = open(lock_file, "a+")
     try:
         if fcntl is not None:
             fcntl.flock(f, fcntl.LOCK_EX | fcntl.LOCK_NB)
         else:
             msvcrt.locking(f.fileno(), msvcrt.LK_NBLCK, 1)
     except (BlockingIOError, OSError):
+        f.close()
         print(json.dumps({"status": "LOCKED"}), file=sys.stdout)
         sys.exit(0)
-    f.write(str(os.getpid()))
-    f.flush()
+    try:
+        f.seek(0)
+        f.truncate()
+        f.write(str(os.getpid()))
+        f.flush()
+    except OSError:
+        pass
     return f
 
 
@@ -242,10 +268,17 @@ def adaptive_timeout(health, name):
 
 
 def record(health, name, ok, ms):
-    h = health.setdefault(name, {"consecutive_fails": 0, "consecutive_successes": 0,
-                                 "total_fails": 0, "total_successes": 0,
-                                 "response_samples": [], "last_seen": 0,
-                                 "degraded_until": 0, "is_degraded": False})
+    # 逐键 setdefault:health 文件被手工编辑/外部工具写入而缺键时,
+    # KeyError 会打崩整轮 fetch(audit F-PY-15)
+    h = health.setdefault(name, {})
+    h.setdefault("consecutive_fails", 0)
+    h.setdefault("consecutive_successes", 0)
+    h.setdefault("total_fails", 0)
+    h.setdefault("total_successes", 0)
+    h.setdefault("response_samples", [])
+    h.setdefault("last_seen", 0)
+    h.setdefault("degraded_until", 0)
+    h.setdefault("is_degraded", False)
     h["last_seen"] = time.time()
     if ok:
         h["consecutive_fails"] = 0
@@ -285,11 +318,15 @@ def pick_sources(all_sources, health, state_file, per_day):
                 -(rate * 0.6 + speed * 0.4), src.get("tier", 3))
 
     pool = []
+    if not by_cat:
+        return []  # 所有源都被停用/过滤:静默空转,不再 max() 崩溃
     max_len = max(len(v) for v in by_cat.values())
     for i in range(max_len):
         for cat in sorted(by_cat):
             if i < len(by_cat[cat]):
                 pool.append(by_cat[cat][i])
+    if not pool:
+        return []
 
     state = load_json(state_file, {})
     if state.get("pool_date") != today_str():
@@ -344,7 +381,9 @@ def fetch_one(src, timeout):
         pub = None
         st = e.get("published_parsed") or e.get("updated_parsed")
         if st:
-            pub = time.mktime(st)
+            # feedparser 的 *_parsed 一律是 UTC:timegm 才是对的,mktime 会把
+            # UTC struct_time 当本地时间(-8h),时效分档整体错位(audit M12)
+            pub = calendar.timegm(st)
         if title and link:
             items.append({"title": title, "link": link, "text": text[:2500],
                           "published": pub})
@@ -367,7 +406,9 @@ def fetch_all(selected, health):
             except Exception as e:
                 record(health, src["name"], False, 0)
                 results[src["name"]] = {"src": src, "error": str(e)[:80]}
-    except TimeoutError:
+    except concurrent.futures.TimeoutError:
+        # 3.11 起 concurrent.futures.TimeoutError 才是内置 TimeoutError 的别名;
+        # 3.9/3.10 上 except TimeoutError 接不住它,超时路径会整体抛出(audit B2)
         for fut, src in futs.items():
             if not fut.done():
                 fut.cancel()
@@ -395,8 +436,10 @@ def fetch_newsflash():
                 f"https://newsflash.sh/api/events?category={cat}&limit=40",
                 headers={"User-Agent": UA})
             resp = urlopen_maybe_loose(req, timeout=10)
-            data = json.loads(resp.read().decode("utf-8"))
-            resp.close()
+            try:
+                data = json.loads(resp.read(RSS_MAX_BYTES).decode("utf-8"))
+            finally:
+                resp.close()
             evs = []
             for e in data.get("events", []):
                 fs = e.get("first_seen_at") or ""
@@ -429,12 +472,33 @@ def fetch_newsflash():
 # ── 正文增强:短摘要条目抓原文页(仅入围候选) ──
 
 def fetch_page_text(url):
+    # 正文增强只放行 http/https:源站可控的 <link> 指向 file:/data: 会变成
+    # 本地文件读取 + 任意文本注入(audit H4),一律拒绝
+    if (urlsplit(url or "").scheme or "").lower() not in ("http", "https"):
+        print(f"[enrich] blocked non-http(s) link: {str(url)[:80]}", file=sys.stderr)
+        return None
     req = urllib.request.Request(url, headers={"User-Agent": UA})
     resp = urlopen_maybe_loose(req, timeout=PAGE_TIMEOUT)
     try:
-        html = resp.read(PAGE_MAX_BYTES).decode("utf-8", errors="replace")
+        raw = resp.read(PAGE_MAX_BYTES)
     finally:
         resp.close()
+    # 编码:先信 HTTP 头,再看 HTML meta;GBK 源用 utf-8 errors=replace 会
+    # 不可逆变 U+FFFD(audit M13)
+    charset = None
+    try:
+        charset = resp.headers.get_content_charset()
+    except Exception:
+        pass
+    if not charset:
+        m = re.search(rb"""charset\s*=\s*["']?([\w-]+)""", raw[:2048], re.I)
+        if m:
+            charset = m.group(1).decode("ascii", "replace")
+    try:
+        html = raw.decode(charset or "utf-8", errors="replace")
+    except (LookupError, UnicodeDecodeError):
+        html = raw.decode("utf-8", errors="replace")
+    html = fix_mojibake(html)
     am = re.search(r"<article[^>]*>(.*?)</article>", html, flags=re.S | re.I)
     if am:
         text = strip_html(am.group(1))
@@ -469,7 +533,7 @@ def enrich(cands):
                     c["enriched"] = True
             except Exception:
                 pass
-    except TimeoutError:
+    except concurrent.futures.TimeoutError:
         pass
     finally:
         ex.shutdown(wait=False, cancel_futures=True)
@@ -567,42 +631,59 @@ def build_prompt(pool, digest_items, lang="zh"):
     return editor_prompt(lang).format(n=digest_items, cands="\n".join(lines))
 
 
-def parse_reply(text, pool, lang="zh"):
-    """解析 LLM 回复 → picked 列表;垃圾输出返回 None"""
-    m = re.search(r"\{.*\}", text or "", re.S)
-    if not m:
-        return None
-    try:
-        data = json.loads(m.group(0))
-    except Exception:
-        return None
-    out, used_n = [], set()
-    for it in data.get("items", []):
-        try:
-            n = int(it["n"])
-            line = str(it["line"]).strip()
-            tag = str(it.get("tag") or "").strip()
-            if 1 <= n <= len(pool) and len(line) >= 8 and n not in used_n:
-                used_n.add(n)
-                if tag not in TAG_VOCABS.get(lang, TAG_VOCAB):
-                    tag = pool[n - 1].get("category", "新闻")
-                out.append({"cand": pool[n - 1], "line": cut_line(line), "tag": tag})
-        except Exception:
+def _json_objects(text):
+    """从左到右扫描所有 '{' 起点,依次产出能解析成功的 JSON 对象。
+    替代贪婪正则 \\{.*\\}:回复里出现两个 JSON 对象(思考/示例)时,
+    贪婪匹配会整体 json.loads 失败 → 静默丢掉全部编辑(audit M18)。"""
+    dec = json.JSONDecoder()
+    text = text or ""
+    for i, ch in enumerate(text):
+        if ch != "{":
             continue
-    return out or None
+        try:
+            obj, _ = dec.raw_decode(text, i)
+        except ValueError:
+            continue
+        if isinstance(obj, dict):
+            yield obj
+
+
+def parse_reply(text, pool, lang="zh"):
+    """解析 LLM 回复 → picked 列表;垃圾输出返回 None。
+    逐个尝试能解析的 JSON 对象(带 items),取第一个产出有效条目的——
+    模型先吐示例/思考对象再吐正式输出的场景不再丢掉全部编辑(audit M18)。"""
+    for obj in _json_objects(text):
+        if not isinstance(obj.get("items"), list):
+            continue
+        out, used_n = [], set()
+        for it in obj.get("items", []):
+            try:
+                n = int(it["n"])
+                line = str(it["line"]).strip()
+                tag = str(it.get("tag") or "").strip()
+                if 1 <= n <= len(pool) and len(line) >= 8 and n not in used_n:
+                    used_n.add(n)
+                    if tag not in TAG_VOCABS.get(lang, TAG_VOCAB):
+                        tag = pool[n - 1].get("category", "新闻")
+                    out.append({"cand": pool[n - 1], "line": cut_line(line, lang), "tag": tag})
+            except Exception:
+                continue
+        if out:
+            return out
+    return None
 
 
 def parse_lead(text, lang="zh"):
     """从同一份 LLM 回复里取导语;没有或超长返回空串"""
-    m = re.search(r"\{.*\}", text or "", re.S)
-    if not m:
-        return ""
-    try:
-        lead = str(json.loads(m.group(0)).get("lead") or "").strip()
-    except Exception:
-        return ""
-    limit = 120 if lang == "zh" else 200
-    return lead[:limit]
+    for obj in _json_objects(text):
+        if "lead" in obj:
+            try:
+                lead = str(obj.get("lead") or "").strip()
+            except Exception:
+                return ""
+            limit = 120 if lang == "zh" else 200
+            return lead[:limit]
+    return ""
 
 
 def _cjk_ratio(s):
@@ -626,24 +707,22 @@ DEGRADED_NOTES = {
 
 def apply_translate_reply(outbox, reply_text, lang, footer=""):
     """翻译兜底:把 LLM 回复的中文一句话套到规则选题上;套上≥1条才算成功"""
-    m = re.search(r"\{.*\}", reply_text or "", re.S)
-    if not m:
-        return False
-    try:
-        data = json.loads(m.group(0))
-    except Exception:
-        return False
     items = outbox.get("rule_items", [])
     applied = 0
-    for it in data.get("items", []):
-        try:
-            n = int(it["n"])
-            line = str(it.get("line") or "").strip()
-            if 1 <= n <= len(items) and len(line) >= 4:
-                items[n - 1]["one_liner"] = cut_line(line)
-                applied += 1
-        except Exception:
+    for obj in _json_objects(reply_text):
+        if not isinstance(obj.get("items"), list):
             continue
+        for it in obj.get("items", []):
+            try:
+                n = int(it["n"])
+                line = str(it.get("line") or "").strip()
+                if 1 <= n <= len(items) and len(line) >= 4:
+                    items[n - 1]["one_liner"] = cut_line(line, lang)
+                    applied += 1
+            except Exception:
+                continue
+        if applied:
+            break
     if not applied:
         return False
     note = DEGRADED_NOTES.get(lang, "") if _mostly_foreign(items) else ""
@@ -673,7 +752,8 @@ def llm_call_endpoint(prompt):
             data=json.dumps(payload).encode("utf-8"),
             headers={"Content-Type": "application/json", "Authorization": f"Bearer {key}"},
             method="POST")
-        resp = urlopen_maybe_loose(req, timeout=min(LLM_TIMEOUT_S, max(5, remaining() - 10)))
+        resp = urlopen_maybe_loose(req, timeout=min(LLM_TIMEOUT_S, max(5, remaining() - 10)),
+                                   allow_loose=False)
         try:
             return json.loads(resp.read().decode("utf-8"))["choices"][0]["message"]["content"].strip()
         finally:
@@ -691,7 +771,7 @@ def llm_call_endpoint(prompt):
 pool_ref = [None]  # llm_call_endpoint 需要 pool 解析;由调用方设置
 
 
-def rule_edit(cands):
+def rule_edit(cands, lang="zh"):
     """降级:cands 已按分排序;剔排除词+同事件去重+同类目≤2条"""
     out, picked_tokens, per_cat = [], [], {}
     for c in cands:
@@ -707,7 +787,7 @@ def rule_edit(cands):
         picked_tokens.append(tk)
         per_cat[cat] = per_cat.get(cat, 0) + 1
         t = re.sub(r"[|｜#*]+$", "", title).strip()
-        out.append({"cand": c, "line": cut_line(t)})
+        out.append({"cand": c, "line": cut_line(t, lang)})
         if len(out) >= DIGEST_ITEMS:
             break
     return out
@@ -735,8 +815,11 @@ def cap_per_tag(picked, cap=2):
     return out
 
 
-def cut_line(s, n=ONE_LINER_MAX):
-    """超长一句话在最后一个标点收尾,避免硬截断产生悬句"""
+def cut_line(s, lang="zh"):
+    """超长一句话在最后一个标点收尾,避免硬截断产生悬句。
+    限额按语言:zh 50 字,prompt 承诺英文 ≤30 words ≈200 字符,
+    按 50 硬截会切在单词中间(audit M15)。"""
+    n = ONE_LINER_MAX if lang == "zh" else ONE_LINER_MAX_EN
     if len(s) <= n:
         return s
     for i in range(n, 10, -1):
@@ -831,7 +914,7 @@ def stage_fetch(p, args):
         dated = [x for x in pushed.get("dated", []) if x.get("d") != today_str()]
         pushed = {"hashes": [x["h"] for x in dated], "titles": [x["t"] for x in dated], "dated": dated}
     seen_hashes = set(pushed.get("hashes", []))
-    seen_tokens = [tokenize(t) for t in pushed.get("titles", [])[-PUSHED_KEEP_ITEMS:]]
+    seen_tokens = [tokenize(t) for t in pushed.get("titles", [])[-pushed_keep(args):]]
 
     candidates, dup_in_day = [], 0
     day_tokens = []
@@ -908,13 +991,13 @@ def stage_fetch(p, args):
     stats["enriched"] = sum(1 for c in pool if c.get("enriched"))
 
     # 规则版先行(fallback + rule 模式产物)
-    rule_picked = cap_per_tag(rule_edit(pool)) if pool else []
+    rule_picked = cap_per_tag(rule_edit(pool, args.lang)) if pool else []
     rule_digest, rule_items = None, []
     if rule_picked:
         date_cn = digest_date(args.lang)
         rule_digest = format_digest(date_cn,
                                     [f"【{item_tag(x)}】{x['line']}" for x in rule_picked],
-                                    args.footer)
+                                    args.footer, lang=args.lang)
         rule_items = picked_to_items(rule_picked)
 
     # 池瘦身:finalize 阶段只需要映射字段
@@ -1025,8 +1108,9 @@ def stage_confirm(p, args):
         emit({"status": "NO_OUTBOX"})
         return
     if args.date and outbox.get("date") != args.date:
+        # rc=0 + stdout JSON:rc!=0 会让插件侧把错误对象整个丢掉(audit F-PY-16)
         emit({"status": "DATE_MISMATCH", "outbox": outbox.get("date"), "want": args.date})
-        sys.exit(1)
+        return
     if outbox.get("confirmed"):
         emit({"status": "ALREADY_CONFIRMED", "date": outbox.get("date")})
         return
@@ -1037,7 +1121,7 @@ def stage_confirm(p, args):
     for it in outbox["items"]:
         dated.append({"d": outbox["date"], "h": title_hash(it["title"]), "t": it["title"]})
     cutoff = (datetime.now(ACTIVE_TZ) - timedelta(days=PUSHED_KEEP_DAYS)).strftime("%Y-%m-%d")
-    dated = [x for x in dated if x["d"] >= cutoff][-PUSHED_KEEP_ITEMS:]
+    dated = [x for x in dated if x["d"] >= cutoff][-pushed_keep(args):]
     save_json(p.pushed, {"hashes": [x["h"] for x in dated], "titles": [x["t"] for x in dated],
                          "dated": dated})
 
@@ -1123,7 +1207,16 @@ def main():
     ACTIVE_TZ = parse_tz(args.tz)
 
     p = Paths(args)
-    lock = acquire_lock(p.lock)
+    # 只有"读网/写 outbox"的重量级阶段抢独占锁。status/confirm 走无锁路径:
+    #   - status:契约就是随时可查(mcp rss_status 与插件 getStatus 都依赖它),
+    #     抓取期间返回 LOCKED 会把插件侧的幂等判断打成 undefined===undefined(audit H9/M7)
+    #   - confirm:投递成功后若因撞锁拿不到 LOCKED,插件会把 LOCKED 当成功,
+    #     幂等门不写 → 下一轮整份日报再投一遍(audit H3);confirm 只写
+    #     rss-sent.json/outbox(原子 os.replace),与并发 fetch 的最坏交错是
+    #     outbox 被覆盖回未确认,而 rss-sent.json 仍兜住"今天已送"
+    lock = None
+    if args.stage in (None, "", "fetch", "finalize"):
+        lock = acquire_lock(p.lock)
 
     global DEADLINE
     DEADLINE = time.monotonic() + TOTAL_BUDGET_S
@@ -1149,11 +1242,13 @@ def main():
     finally:
         if hasattr(signal, "SIGALRM"):
             signal.alarm(0)
-        try:
-            lock.close()
-            os.remove(p.lock)
-        except Exception:
-            pass
+        if lock:
+            try:
+                lock.close()
+            except Exception:
+                pass
+            # 不删除锁文件:close 即释放锁;unlink 与竞争者抢锁之间存在
+            # 双持锁窗口,残留死文件也无害(acquire_lock 可自行重新抢)
 
 
 if __name__ == "__main__":

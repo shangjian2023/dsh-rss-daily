@@ -1,5 +1,49 @@
 # Changelog
 
+## 0.7.0 - 2026-10-02
+
+Audit-driven hardening: a four-agent audit (with an adversarial verifier) confirmed the happy path but found 3 blockers, 9 highs and 21 mediums in the seams — platform/version gaps, silent catches, and a release chain that had bypassed its own gates since 0.3.4. This release fixes all blockers, all highs, and every actionable medium; ships with regression tests for each; and restores the tag-driven release pipeline with provenance.
+
+**Blockers**
+
+- **Windows machines where only the `py` launcher exists now work at all**: `-3` was appended *after* the script path, argparse rejected it (`unrecognized arguments: -3`, exit 2) and every stage failed. Args are now `py -3 daily.py …` (audit B3)
+- **`except TimeoutError` couldn't catch `concurrent.futures.TimeoutError` on Python 3.9/3.10** (it only aliases the builtin since 3.11) — a few slow sources together would crash the whole fetch. Both catch sites fixed + regression test (audit B2)
+- **The MCP server no longer fails to start on current mcp releases**: `mcp.server.fastmcp` is gone in mcp 2.x; the import now falls back to `MCPServer`. Handshake verified against mcp 2.2.0 (initialize + tools/list, all 4 tools) (audit B1)
+
+**Delivery correctness (no more duplicate digests)**
+
+- `--stage status` and `--stage confirm` no longer take the exclusive lock. Previously, a concurrent fetch (MCP, cron, another profile) made status return `LOCKED` — the JS side compared `undefined === undefined` and reported "already delivered today" — and confirm's `LOCKED` (rc 0) was swallowed as success, so the idempotency gate never got written and the *same digest was re-delivered next round*. status is pure file reads; confirm only writes via atomic replace (audit H3/H9/M7/M-1, verified end-to-end under a held lock)
+- One malformed delivery target (missing `type`) used to crash the whole delivery round — targets that *had* received the digest couldn't be confirmed and got it again the next day. Malformed targets are now filtered at config load, per-target failures don't reject the batch, and unknown types don't retry (audit H2)
+- Lock file is opened `a+` (no longer truncates the holder's PID) and is never deleted on exit, closing the unlink-race double-hold window (audit M11)
+- The MCP side's `_running()` probe now *try-locks* instead of reading the lock file — Windows `LockFile` makes the locked byte range unreadable (`PermissionError`), so during any external fetch it always reported "not running" (audit H6). MCP also honors `RSS_DAILY_TZ` so it and the plugin agree on what "today" means (audit M16)
+
+**Security**
+
+- API write routes (`run/redo/redeliver/config/sources`) require same-origin (`Origin`/`Sec-Fetch-Site`) **and** `Content-Type: application/json` — a cross-site "simple request" (no CORS preflight) could previously rewrite your delivery targets to an attacker webhook (audit H1)
+- `fetch_page_text` only fetches `http`/`https`: a poisoned feed could point the enricher at `file:///` (local file read into the LLM prompt) or `data:` (arbitrary injection) (audit H4)
+- TLS-downgrade retry no longer applies to credentialed requests: the LLM direct call used to re-send `Authorization: Bearer <key>` over a channel with `CERT_NONE` + no hostname check whenever the first handshake failed — a classic on-path key harvest (audit H5)
+- Self-drawn links in the panel/broadcast get the same `http(s)`-only `sanitizeUrl` the host's MarkdownText applies (audit M6); the one plaintext-HTTP source (arXiv) moved to https
+
+**No more silent data loss**
+
+- A corrupt `panel-config.json` is moved aside with a warning instead of being silently ignored (the next save used to overwrite all your settings with defaults), persist failures now surface to the API instead of `saved:true`, and a broken `sources.json` returns a 500 instead of an empty list that one save would turn into "0 sources" (audit M8/M9/M10)
+- Masked-secret backfill matches targets by type identity instead of array index — a stale panel snapshot could bake the literal `•••` into the config as a "secret" forever; unmatched masks are now rejected (audit M2)
+- `footer` is capped at 500 chars: one oversized footer made every run die with `spawn ENAMETOOLONG` and never self-heal (audit M3)
+- The in-chat broadcast card no longer vanishes ~20 s after appearing (an 800 ms loop unconditionally cleared the view state); it now clears only when the conversation actually changes (audit M1)
+
+**Editorial quality**
+
+- `time.mktime` → `calendar.timegm`: feedparser timestamps are UTC and were shifted −8 h on UTC+8 hosts, systematically burying fresh news in the recency tiers (audit M12)
+- LLM reply parsing scans JSON objects left-to-right instead of a greedy `{.*}` match — a stray example object in the reply no longer silently discards the entire edit (audit M18)
+- Rule-mode digests honor `--lang` (the title said 每日要闻 in English digests), one-liners for English use a 200-char budget instead of being cut mid-word at 50 (audit M14/M15); enricher respects charset headers/meta instead of force-decoding UTF-8 (GBK sources became U+FFFD) (audit M13); translate fallback keeps your configured provider (audit M4); all-disabled sources return empty instead of crashing `pick_sources` (audit M17); `record()`/`load_json()` tolerate damaged state files (audit F-PY-15/18)
+
+**Engineering / release chain**
+
+- Release gates restored: tags v0.4.0–v0.6.2 are backfilled, publishing goes through `release.yml` again (pytest + unit + smoke + tarball assertions + `--provenance`), and `files` is an explicit list — the npm tarball no longer ships `mcp/__pycache__/*.pyc` (audit H7/H8/M19)
+- CI runs on pnpm with a committed lockfile, Node 22/24 (matching the host's own engines), includes the smoke E2E and a tarball content assertion, plus a client-bundle contract test (audit M20/M21/F-PKG-05)
+- `test` scripts use a glob Node's test runner expands itself — no more shell-glob dependence that failed on Windows + Node 18/20 (audit F-PKG-12); engines raised to `>=22.19.0` (audit F-PKG-09); docs synced (API endpoint list, source categories, lead tolerance, mcp version note, platform note for the 420 s budget)
+
+
 ## 0.6.2 - 2026-09-30
 
 Context footprint + broadcast frequency, both user-reported.

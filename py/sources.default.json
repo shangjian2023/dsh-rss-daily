@@ -163,7 +163,7 @@
     },
     {
       "name": "arXiv-csAI",
-      "url": "http://export.arxiv.org/rss/cs.AI",
+      "url": "https://export.arxiv.org/rss/cs.AI",
       "category": "研究",
       "method": "direct",
       "tier": 3
